@@ -1,0 +1,722 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>台球小游戏</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    min-height: 100%;
+    background: radial-gradient(circle at 50% 0%, #2a3138 0%, #14181c 70%);
+    font-family: system-ui, -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    padding: 18px;
+    gap: 12px;
+  }
+  .game-wrap {
+    width: min(96vw, 1000px);
+    position: relative;
+  }
+  canvas {
+    width: 100%;
+    height: auto;
+    display: block;
+    border-radius: 18px;
+    box-shadow: 0 22px 50px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.06);
+    cursor: crosshair;
+    touch-action: none;
+  }
+  .bar {
+    width: min(96vw, 1000px);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+    color: #c9d4de;
+    font-size: 15px;
+    letter-spacing: 0.3px;
+  }
+  .hint {
+    opacity: 0.65;
+    font-size: 13px;
+  }
+  button {
+    font: inherit;
+    padding: 8px 18px;
+    border-radius: 10px;
+    border: 1px solid rgba(255,255,255,0.18);
+    background: linear-gradient(#3a444e, #242c33);
+    color: #e8eef4;
+    cursor: pointer;
+    transition: 0.15s;
+  }
+  button:hover {
+    background: linear-gradient(#48545f, #2c353d);
+    border-color: rgba(255,255,255,0.3);
+  }
+  button:active { transform: translateY(1px); }
+</style>
+</head>
+<body>
+
+<div class="game-wrap">
+  <canvas id="game" width="960" height="540"></canvas>
+</div>
+
+<div class="bar">
+  <span id="status">剩余球：15</span>
+  <span class="hint">按住鼠标蓄力 · 松开击球</span>
+  <button id="restart">重新开始</button>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  const canvas = document.getElementById("game");
+  const ctx    = canvas.getContext("2d");
+  const statusEl  = document.getElementById("status");
+  const restartEl = document.getElementById("restart");
+
+  const W = canvas.width;
+  const H = canvas.height;
+
+  // ---------- 桌面几何 ----------
+  const TABLE = { x: 50, y: 50, w: 860, h: 440 };
+  const BALL_R   = 13;
+  const POCKET_R = 26;
+
+  // ---------- 物理参数（惯性更强、更顺滑）----------
+  const DECEL         = 200;   // 基础滚动摩擦（原来 520，现在球滑得更远）
+  const BRAKE_SPEED   = 70;    // 低于此速度触发额外刹车
+  const BRAKE_DECEL   = 560;   // 低速时刹车更强，避免球慢慢爬
+  const MAX_SPEED     = 2000;  // 最大击球速度（原来 1400）
+  const RESTITUTION   = 0.96;  // 球与球之间的弹性
+  const CUSHION_REST  = 0.82;  // 库边弹性
+  const STEP          = 1 / 240;
+
+  // ---------- 球袋 ----------
+  const POCKETS = [
+    { x: TABLE.x,                 y: TABLE.y },
+    { x: TABLE.x + TABLE.w / 2,   y: TABLE.y },
+    { x: TABLE.x + TABLE.w,       y: TABLE.y },
+    { x: TABLE.x,                 y: TABLE.y + TABLE.h },
+    { x: TABLE.x + TABLE.w / 2,   y: TABLE.y + TABLE.h },
+    { x: TABLE.x + TABLE.w,       y: TABLE.y + TABLE.h }
+  ];
+
+  // ---------- 球色 ----------
+  const BALL_COLORS = {
+    1: "#f2c419", 2: "#1c5fd6", 3: "#e03131", 4: "#7b2fbe",
+    5: "#f07c1e", 6: "#1e9e57", 7: "#8a2b2b", 8: "#1a1a1a",
+    9: "#f2c419", 10: "#1c5fd6", 11: "#e03131", 12: "#7b2fbe",
+    13: "#f07c1e", 14: "#1e9e57", 15: "#8a2b2b"
+  };
+
+  // ---------- 状态 ----------
+  let balls = [];
+  let cueBall = null;
+  let cueBallNeedsReset = false;
+
+  let aimAngle = 0;
+  let power = 0;
+  let charging = false;
+
+  let lastT = 0;
+  let accT = 0;
+
+  // ============================================================
+  //  初始化
+  // ============================================================
+  function newGame() {
+    balls = [];
+    cueBallNeedsReset = false;
+    power = 0;
+    charging = false;
+    aimAngle = 0;
+
+    cueBall = {
+      x: TABLE.x + TABLE.w * 0.22,
+      y: TABLE.y + TABLE.h * 0.5,
+      vx: 0, vy: 0,
+      r: BALL_R,
+      color: "#ffffff",
+      num: 0,
+      stripe: false,
+      active: true
+    };
+    balls.push(cueBall);
+
+    const apexX = TABLE.x + TABLE.w * 0.72;
+    const apexY = TABLE.y + TABLE.h * 0.5;
+    const gap = BALL_R * 2 + 0.6;
+    const dx = gap * Math.cos(Math.PI / 6);
+
+    const pool = [1,2,3,4,5,6,7,9,10,11,12,13,14,15];
+    for (let i = pool.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [pool[i], pool[j]] = [pool[j], pool[i]];
+    }
+
+    const order = [];
+    let ni = 0;
+    for (let k = 0; k < 15; k++) {
+      if (k === 4) order.push(8);
+      else order.push(pool[ni++]);
+    }
+
+    let idx = 0;
+    for (let row = 0; row < 5; row++) {
+      for (let i = 0; i <= row; i++) {
+        const num = order[idx++];
+        balls.push({
+          x: apexX + row * dx,
+          y: apexY + (i - row / 2) * gap,
+          vx: 0, vy: 0,
+          r: BALL_R,
+          color: BALL_COLORS[num],
+          num: num,
+          stripe: num > 8,
+          active: true
+        });
+      }
+    }
+  }
+
+  // ============================================================
+  //  物理
+  // ============================================================
+  function ballsMoving() {
+    for (const b of balls) {
+      if (b.active && (b.vx !== 0 || b.vy !== 0)) return true;
+    }
+    return false;
+  }
+
+  function potBall(b) {
+    b.active = false;
+    b.vx = 0;
+    b.vy = 0;
+    if (b === cueBall) cueBallNeedsReset = true;
+  }
+
+  function collideBalls(a, b) {
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const distSq = dx * dx + dy * dy;
+    const minD = a.r + b.r;
+    if (distSq >= minD * minD || distSq < 1e-9) return;
+
+    const dist = Math.sqrt(distSq);
+    const nx = dx / dist;
+    const ny = dy / dist;
+
+    const overlap = (minD - dist) * 0.5;
+    a.x -= nx * overlap;
+    a.y -= ny * overlap;
+    b.x += nx * overlap;
+    b.y += ny * overlap;
+
+    const rvx = b.vx - a.vx;
+    const rvy = b.vy - a.vy;
+    const vn = rvx * nx + rvy * ny;
+    if (vn > 0) return;
+
+    const imp = -(1 + RESTITUTION) * vn * 0.5;
+    a.vx -= imp * nx;
+    a.vy -= imp * ny;
+    b.vx += imp * nx;
+    b.vy += imp * ny;
+  }
+
+  function physicsStep(dt) {
+    // 1. 积分位置
+    for (const b of balls) {
+      if (!b.active) continue;
+      b.x += b.vx * dt;
+      b.y += b.vy * dt;
+    }
+
+    // 2. 滚动摩擦（高速段摩擦弱 → 惯性感强；低速段刹车强 → 干净停下）
+    for (const b of balls) {
+      if (!b.active) continue;
+      const sp = Math.hypot(b.vx, b.vy);
+      if (sp > 0) {
+        const decel = sp < BRAKE_SPEED ? BRAKE_DECEL : DECEL;
+        const ns = sp - decel * dt;
+        if (ns <= 1) {
+          b.vx = 0;
+          b.vy = 0;
+        } else {
+          const k = ns / sp;
+          b.vx *= k;
+          b.vy *= k;
+        }
+      }
+    }
+
+    // 3. 球球碰撞
+    for (let i = 0; i < balls.length; i++) {
+      if (!balls[i].active) continue;
+      for (let j = i + 1; j < balls.length; j++) {
+        if (!balls[j].active) continue;
+        collideBalls(balls[i], balls[j]);
+      }
+    }
+
+    // 4. 落袋检测
+    for (const b of balls) {
+      if (!b.active) continue;
+      for (const p of POCKETS) {
+        if (Math.hypot(b.x - p.x, b.y - p.y) < POCKET_R) {
+          potBall(b);
+          break;
+        }
+      }
+    }
+
+    // 5. 库边反弹
+    const left   = TABLE.x + BALL_R;
+    const right  = TABLE.x + TABLE.w - BALL_R;
+    const top    = TABLE.y + BALL_R;
+    const bottom = TABLE.y + TABLE.h - BALL_R;
+
+    for (const b of balls) {
+      if (!b.active) continue;
+
+      let nearPocket = false;
+      for (const p of POCKETS) {
+        if (Math.hypot(b.x - p.x, b.y - p.y) < POCKET_R + b.r * 0.6) {
+          nearPocket = true; break;
+        }
+      }
+      if (nearPocket) continue;
+
+      if (b.x < left)   { b.x = left;   b.vx = Math.abs(b.vx) * CUSHION_REST; }
+      if (b.x > right)  { b.x = right;  b.vx = -Math.abs(b.vx) * CUSHION_REST; }
+      if (b.y < top)    { b.y = top;    b.vy = Math.abs(b.vy) * CUSHION_REST; }
+      if (b.y > bottom) { b.y = bottom; b.vy = -Math.abs(b.vy) * CUSHION_REST; }
+
+      if (b.x < TABLE.x - 80 || b.x > TABLE.x + TABLE.w + 80 ||
+          b.y < TABLE.y - 80 || b.y > TABLE.y + TABLE.h + 80) {
+        potBall(b);
+      }
+    }
+  }
+
+  // ============================================================
+  //  白球重置
+  // ============================================================
+  function overlapsAny(x, y, r) {
+    for (const b of balls) {
+      if (!b.active || b === cueBall) continue;
+      if (Math.hypot(b.x - x, b.y - y) < r + b.r + 1) return true;
+    }
+    return false;
+  }
+
+  function resetCueBall() {
+    cueBall.active = true;
+    cueBall.vx = 0;
+    cueBall.vy = 0;
+
+    let x = TABLE.x + TABLE.w * 0.22;
+    let y = TABLE.y + TABLE.h * 0.5;
+    let tries = 0;
+    while (overlapsAny(x, y, cueBall.r) && tries < 200) {
+      x -= 5;
+      if (x < TABLE.x + cueBall.r + 4) {
+        x = TABLE.x + TABLE.w * 0.22;
+        y += 6;
+      }
+      if (y > TABLE.y + TABLE.h - cueBall.r - 4) {
+        y = TABLE.y + TABLE.h * 0.5;
+        x = TABLE.x + TABLE.w * 0.12;
+      }
+      tries++;
+    }
+    cueBall.x = x;
+    cueBall.y = y;
+  }
+
+  // ============================================================
+  //  击球
+  // ============================================================
+  function shoot() {
+    if (!cueBall || !cueBall.active) { power = 0; return; }
+    if (power < 0.04) { power = 0; return; }
+
+    const speed = power * MAX_SPEED;
+    cueBall.vx = Math.cos(aimAngle) * speed;
+    cueBall.vy = Math.sin(aimAngle) * speed;
+    power = 0;
+  }
+
+  // ============================================================
+  //  输入
+  // ============================================================
+  function getPos(e) {
+    const rect = canvas.getBoundingClientRect();
+    return {
+      x: (e.clientX - rect.left) * (canvas.width / rect.width),
+      y: (e.clientY - rect.top) * (canvas.height / rect.height)
+    };
+  }
+
+  canvas.addEventListener("pointerdown", (e) => {
+    e.preventDefault();
+    try { canvas.setPointerCapture(e.pointerId); } catch (err) {}
+
+    const m = getPos(e);
+    if (!cueBall || !cueBall.active || ballsMoving()) return;
+
+    aimAngle = Math.atan2(m.y - cueBall.y, m.x - cueBall.x);
+    charging = true;
+    power = 0;
+  });
+
+  canvas.addEventListener("pointermove", (e) => {
+    if (!cueBall || !cueBall.active || ballsMoving()) return;
+    if (charging) return;
+    const m = getPos(e);
+    aimAngle = Math.atan2(m.y - cueBall.y, m.x - cueBall.x);
+  });
+
+  function endCharge() {
+    if (!charging) return;
+    charging = false;
+    shoot();
+  }
+
+  canvas.addEventListener("pointerup", (e) => {
+    e.preventDefault();
+    endCharge();
+  });
+  canvas.addEventListener("pointercancel", () => {
+    charging = false;
+    power = 0;
+  });
+
+  restartEl.addEventListener("click", () => {
+    newGame();
+  });
+
+  // ============================================================
+  //  更新
+  // ============================================================
+  function update(dt) {
+    if (charging) {
+      power = Math.min(1, power + dt / 1.1);
+    }
+
+    accT += dt;
+    let guard = 0;
+    while (accT >= STEP && guard < 240) {
+      physicsStep(STEP);
+      accT -= STEP;
+      guard++;
+    }
+    if (guard >= 240) accT = 0;
+
+    if (cueBallNeedsReset && !ballsMoving()) {
+      resetCueBall();
+      cueBallNeedsReset = false;
+    }
+  }
+
+  // ============================================================
+  //  渲染
+  // ============================================================
+  function roundRect(c, x, y, w, h, r) {
+    c.beginPath();
+    c.moveTo(x + r, y);
+    c.arcTo(x + w, y, x + w, y + h, r);
+    c.arcTo(x + w, y + h, x, y + h, r);
+    c.arcTo(x, y + h, x, y, r);
+    c.arcTo(x, y, x + w, y, r);
+    c.closePath();
+  }
+
+  function drawTable() {
+    const wood = ctx.createLinearGradient(0, 0, 0, H);
+    wood.addColorStop(0,   "#9a6437");
+    wood.addColorStop(0.45,"#6e4322");
+    wood.addColorStop(1,   "#42260f");
+    ctx.fillStyle = wood;
+    roundRect(ctx, 0, 0, W, H, 18);
+    ctx.fill();
+
+    ctx.strokeStyle = "rgba(255,225,190,0.14)";
+    ctx.lineWidth = 2;
+    roundRect(ctx, 5, 5, W - 10, H - 10, 15);
+    ctx.stroke();
+
+    const felt = ctx.createRadialGradient(W / 2, H / 2, 80, W / 2, H / 2, 640);
+    felt.addColorStop(0, "#1fa268");
+    felt.addColorStop(1, "#0a6039");
+    ctx.fillStyle = felt;
+    ctx.fillRect(TABLE.x, TABLE.y, TABLE.w, TABLE.h);
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(TABLE.x, TABLE.y, TABLE.w, TABLE.h);
+    ctx.clip();
+    for (let i = 0; i < 12; i++) {
+      ctx.strokeStyle = "rgba(0,0,0," + (0.035 * (12 - i)) + ")";
+      ctx.lineWidth = 2;
+      ctx.strokeRect(TABLE.x + i, TABLE.y + i, TABLE.w - i * 2, TABLE.h - i * 2);
+    }
+    ctx.restore();
+  }
+
+  function drawPockets() {
+    for (const p of POCKETS) {
+      const g = ctx.createRadialGradient(p.x, p.y, 2, p.x, p.y, POCKET_R);
+      g.addColorStop(0,   "#000000");
+      g.addColorStop(0.65,"#080808");
+      g.addColorStop(1,   "rgba(12,12,12,0.9)");
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, POCKET_R, 0, Math.PI * 2);
+      ctx.fillStyle = g;
+      ctx.fill();
+
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, POCKET_R, 0, Math.PI * 2);
+      ctx.strokeStyle = "rgba(0,0,0,0.55)";
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    }
+  }
+
+  function drawBall(b) {
+    const { x, y, r } = b;
+
+    ctx.beginPath();
+    ctx.ellipse(x + 2.5, y + 3.5, r * 0.98, r * 0.85, 0, 0, Math.PI * 2);
+    ctx.fillStyle = "rgba(0,0,0,0.32)";
+    ctx.fill();
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.clip();
+
+    if (b.num === 0) {
+      const g = ctx.createRadialGradient(x - r * 0.4, y - r * 0.4, r * 0.1, x, y, r);
+      g.addColorStop(0, "#ffffff");
+      g.addColorStop(0.55, "#f2f5f8");
+      g.addColorStop(1, "#c3cad2");
+      ctx.fillStyle = g;
+      ctx.fillRect(x - r, y - r, r * 2, r * 2);
+    } else if (b.stripe) {
+      ctx.fillStyle = "#f8fafc";
+      ctx.fillRect(x - r, y - r, r * 2, r * 2);
+      ctx.fillStyle = b.color;
+      ctx.fillRect(x - r, y - r * 0.58, r * 2, r * 1.16);
+
+      const g = ctx.createRadialGradient(x - r * 0.4, y - r * 0.4, r * 0.1, x, y, r);
+      g.addColorStop(0,   "rgba(255,255,255,0.75)");
+      g.addColorStop(0.45,"rgba(255,255,255,0.06)");
+      g.addColorStop(1,   "rgba(0,0,0,0.40)");
+      ctx.fillStyle = g;
+      ctx.fillRect(x - r, y - r, r * 2, r * 2);
+    } else {
+      ctx.fillStyle = b.color;
+      ctx.fillRect(x - r, y - r, r * 2, r * 2);
+
+      const g = ctx.createRadialGradient(x - r * 0.4, y - r * 0.4, r * 0.1, x, y, r);
+      g.addColorStop(0,   "rgba(255,255,255,0.80)");
+      g.addColorStop(0.45,"rgba(255,255,255,0.08)");
+      g.addColorStop(1,   "rgba(0,0,0,0.42)");
+      ctx.fillStyle = g;
+      ctx.fillRect(x - r, y - r, r * 2, r * 2);
+    }
+
+    ctx.restore();
+
+    if (b.num > 0) {
+      ctx.beginPath();
+      ctx.arc(x, y, r * 0.55, 0, Math.PI * 2);
+      ctx.fillStyle = "#ffffff";
+      ctx.fill();
+
+      ctx.fillStyle = "#15181c";
+      ctx.font = "bold " + Math.round(r * 0.78) + "px system-ui, sans-serif";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(String(b.num), x, y + 0.5);
+    }
+
+    ctx.beginPath();
+    ctx.arc(x - r * 0.34, y - r * 0.38, r * 0.23, 0, Math.PI * 2);
+    ctx.fillStyle = "rgba(255,255,255,0.85)";
+    ctx.fill();
+
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.strokeStyle = "rgba(0,0,0,0.28)";
+    ctx.lineWidth = 1;
+    ctx.stroke();
+  }
+
+  function drawAim() {
+    if (!cueBall || !cueBall.active) return;
+    if (ballsMoving()) return;
+
+    const p0 = { x: cueBall.x, y: cueBall.y };
+    const d  = { x: Math.cos(aimAngle), y: Math.sin(aimAngle) };
+
+    let bestT = Infinity;
+    let hitBall = null;
+
+    const minX = TABLE.x + cueBall.r;
+    const maxX = TABLE.x + TABLE.w - cueBall.r;
+    const minY = TABLE.y + cueBall.r;
+    const maxY = TABLE.y + TABLE.h - cueBall.r;
+
+    if (d.x >  1e-6) { const t = (maxX - p0.x) / d.x; if (t > 0 && t < bestT) bestT = t; }
+    if (d.x < -1e-6) { const t = (minX - p0.x) / d.x; if (t > 0 && t < bestT) bestT = t; }
+    if (d.y >  1e-6) { const t = (maxY - p0.y) / d.y; if (t > 0 && t < bestT) bestT = t; }
+    if (d.y < -1e-6) { const t = (minY - p0.y) / d.y; if (t > 0 && t < bestT) bestT = t; }
+
+    for (const b of balls) {
+      if (b === cueBall || !b.active) continue;
+      const R  = cueBall.r + b.r;
+      const ox = p0.x - b.x;
+      const oy = p0.y - b.y;
+      const bq = ox * d.x + oy * d.y;
+      const c  = ox * ox + oy * oy - R * R;
+      const disc = bq * bq - c;
+      if (disc < 0) continue;
+      const sq = Math.sqrt(disc);
+      const t1 = -bq - sq;
+      if (t1 > 0 && t1 < bestT) { bestT = t1; hitBall = b; }
+    }
+
+    if (!isFinite(bestT)) bestT = 400;
+
+    const ex = p0.x + d.x * bestT;
+    const ey = p0.y + d.y * bestT;
+
+    ctx.save();
+    ctx.setLineDash([9, 9]);
+    ctx.strokeStyle = "rgba(255,255,255,0.72)";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(p0.x, p0.y);
+    ctx.lineTo(ex, ey);
+    ctx.stroke();
+    ctx.restore();
+
+    ctx.beginPath();
+    ctx.arc(ex, ey, cueBall.r, 0, Math.PI * 2);
+    ctx.strokeStyle = "rgba(255,255,255,0.55)";
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    if (hitBall) {
+      const nx = hitBall.x - ex;
+      const ny = hitBall.y - ey;
+      const nl = Math.hypot(nx, ny) || 1;
+      ctx.save();
+      ctx.setLineDash([6, 6]);
+      ctx.beginPath();
+      ctx.moveTo(hitBall.x, hitBall.y);
+      ctx.lineTo(hitBall.x + (nx / nl) * 70, hitBall.y + (ny / nl) * 70);
+      ctx.strokeStyle = "rgba(255,214,102,0.8)";
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      ctx.restore();
+    }
+  }
+
+  function drawPowerRing() {
+    if (power <= 0.001) return;
+    if (!cueBall || !cueBall.active) return;
+
+    const hue = (1 - power) * 120;
+
+    ctx.beginPath();
+    ctx.arc(
+      cueBall.x, cueBall.y, cueBall.r + 9,
+      -Math.PI / 2,
+      -Math.PI / 2 + Math.PI * 2 * power
+    );
+    ctx.strokeStyle = "hsl(" + hue + ",92%,56%)";
+    ctx.lineWidth = 6;
+    ctx.lineCap = "round";
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.arc(cueBall.x, cueBall.y, cueBall.r + 9, 0, Math.PI * 2);
+    ctx.strokeStyle = "rgba(255,255,255,0.14)";
+    ctx.lineWidth = 6;
+    ctx.stroke();
+  }
+
+  function drawMessage() {
+    const remaining = balls.filter(b => b.num > 0 && b.active).length;
+    if (remaining > 0) return;
+
+    ctx.save();
+    ctx.fillStyle = "rgba(0,0,0,0.55)";
+    roundRect(ctx, W / 2 - 170, H / 2 - 60, 340, 120, 16);
+    ctx.fill();
+
+    ctx.fillStyle = "#7dffb0";
+    ctx.font = "bold 40px system-ui, sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText("🎉 全部清台！", W / 2, H / 2 - 8);
+
+    ctx.fillStyle = "rgba(255,255,255,0.75)";
+    ctx.font = "16px system-ui, sans-serif";
+    ctx.fillText("点击「重新开始」再来一局", W / 2, H / 2 + 32);
+    ctx.restore();
+  }
+
+  function render() {
+    ctx.clearRect(0, 0, W, H);
+
+    drawTable();
+    drawPockets();
+
+    for (const b of balls) {
+      if (b.active) drawBall(b);
+    }
+
+    drawAim();
+    drawPowerRing();
+    drawMessage();
+
+    const remaining = balls.filter(b => b.num > 0 && b.active).length;
+    const txt = "剩余球：" + remaining;
+    if (statusEl.textContent !== txt) statusEl.textContent = txt;
+  }
+
+  // ============================================================
+  //  主循环
+  // ============================================================
+  function loop(t) {
+    if (!lastT) lastT = t;
+    let dt = (t - lastT) / 1000;
+    lastT = t;
+    if (dt > 0.05) dt = 0.05;
+
+    update(dt);
+    render();
+
+    requestAnimationFrame(loop);
+  }
+
+  newGame();
+  requestAnimationFrame(loop);
+
+})();
+</script>
+
+</body>
+</html>
