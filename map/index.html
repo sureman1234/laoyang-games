@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>地块卫星图叠加</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%;width:100%;font-family:'Microsoft YaHei','Segoe UI',sans-serif}
+#map{position:absolute;top:0;left:0;width:100%;height:100%;z-index:1;background:#1a1a2e}
+.panel{position:absolute;z-index:1000;background:rgba(12,20,32,.93);color:#e8eaed;border-radius:12px;box-shadow:0 6px 24px rgba(0,0,0,.5);backdrop-filter:blur(10px)}
+.info-panel{top:12px;right:12px;padding:18px 22px;min-width:300px}
+.info-panel h2{font-size:17px;color:#8ab4f8;margin-bottom:2px}
+.info-panel .sub{font-size:12px;color:#80868b;margin-bottom:14px}
+.stats{display:flex;gap:20px;margin-bottom:14px;padding-bottom:14px;border-bottom:1px solid rgba(138,180,248,.15)}
+.stat{text-align:center;flex:1}
+.stat .v{font-size:26px;font-weight:700;color:#8ab4f8}
+.stat .l{font-size:11px;color:#80868b;margin-top:2px}
+.legend-item{display:flex;align-items:center;gap:8px;font-size:12px;margin:5px 0}
+.swatch{width:16px;height:16px;border-radius:4px;border:2px solid;flex-shrink:0}
+.plot-panel{bottom:12px;left:12px;padding:14px 18px;max-width:340px;max-height:42vh;overflow-y:auto}
+.plot-panel h3{font-size:14px;color:#8ab4f8;margin-bottom:10px}
+.plot-item{padding:8px 10px;margin:5px 0;border-radius:8px;cursor:pointer;transition:all .2s;font-size:12px;border-left:4px solid}
+.plot-item:hover{background:rgba(138,180,248,.12);transform:translateX(3px)}
+.plot-item .nm{font-weight:700;color:#e8eaed}
+.plot-item .mt{color:#9aa0a6;font-size:11px;margin-top:3px}
+.toggle-btn{position:absolute;top:12px;left:12px;z-index:1000;background:rgba(12,20,32,.93);color:#8ab4f8;border:1px solid rgba(138,180,248,.25);border-radius:8px;padding:9px 16px;cursor:pointer;font-size:13px;transition:all .2s}
+.toggle-btn:hover{background:rgba(138,180,248,.18)}
+.leaflet-popup-content-wrapper{background:rgba(12,20,32,.95);color:#e8eaed;border-radius:12px;box-shadow:0 4px 20px rgba(0,0,0,.4)}
+.leaflet-popup-content{margin:16px 20px}
+.leaflet-popup-tip{background:rgba(12,20,32,.95)}
+.leaflet-popup-close-button{color:#9aa0a6!important}
+.popup-title{font-size:16px;font-weight:700;color:#8ab4f8;margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid rgba(138,180,248,.2)}
+.popup-row{display:flex;gap:8px;margin:4px 0;font-size:13px;line-height:1.5}
+.popup-label{color:#9aa0a6;min-width:65px;flex-shrink:0}
+.popup-val{color:#e8eaed;flex:1}
+.plot-label{background:rgba(138,180,248,.92)!important;color:#0c1420!important;border:none!important;border-radius:5px!important;padding:2px 6px!important;font-size:11px!important;font-weight:700!important;white-space:nowrap!important;box-shadow:0 2px 8px rgba(0,0,0,.5)!important}
+.village-label{background:rgba(255,193,7,.85)!important;color:#1a1a2e!important;border:2px solid rgba(255,255,255,.6)!important;border-radius:8px!important;padding:4px 12px!important;font-size:14px!important;font-weight:700!important;white-space:nowrap!important;box-shadow:0 3px 12px rgba(0,0,0,.6)!important;text-shadow:none!important}
+.dist-boundary-label{background:rgba(33,150,243,.75)!important;color:#fff!important;border:1.5px solid rgba(255,255,255,.5)!important;border-radius:6px!important;padding:2px 8px!important;font-size:12px!important;font-weight:600!important;white-space:nowrap!important;box-shadow:0 2px 8px rgba(0,0,0,.5)!important;text-shadow:0 1px 3px rgba(0,0,0,.6)!important}
+.town-boundary-label{background:rgba(255,152,0,.6)!important;color:#fff!important;border:1px solid rgba(255,255,255,.3)!important;border-radius:4px!important;padding:1px 5px!important;font-size:10px!important;font-weight:500!important;white-space:nowrap!important;box-shadow:0 1px 6px rgba(0,0,0,.4)!important;text-shadow:0 1px 2px rgba(0,0,0,.7)!important}
+.town-boundary-label-highlight{background:rgba(76,175,80,.88)!important;color:#fff!important;border:1.5px solid rgba(255,255,255,.6)!important;border-radius:6px!important;padding:2px 8px!important;font-size:12px!important;font-weight:700!important;white-space:nowrap!important;box-shadow:0 2px 10px rgba(0,0,0,.5)!important;text-shadow:0 1px 3px rgba(0,0,0,.6)!important}
+.leaflet-control-scale-line{background:rgba(12,20,32,.8);color:#e8eaed;border-color:rgba(138,180,248,.3)}
+.leaflet-control-layers{background:rgba(255,255,255,.92)!important;border-radius:8px!important;box-shadow:0 2px 10px rgba(0,0,0,.2)!important}
+</style>
+</head>
+<body>
+<div id="map"></div>
+<button class="toggle-btn" id="labelToggle">隐藏标签</button>
+<button class="toggle-btn" id="boundaryToggle" style="top:52px">隐藏行政区划</button>
+<div class="panel info-panel">
+<h2 id="farmerName">承包方名称</h2>
+<div class="sub" id="locationDesc">旗县 · 乡镇 · 嘎查村 · 卫星图叠加</div>
+<div class="stats">
+<div class="stat"><div class="v" id="plotCount">0</div><div class="l">地块数</div></div>
+<div class="stat"><div class="v" id="totalMu">0</div><div class="l">总面积(亩)</div></div>
+<div class="stat"><div class="v" id="totalM2">0</div><div class="l">总面积(㎡)</div></div>
+</div>
+<div class="legend-item"><div class="swatch" style="background:rgba(138,180,248,.3);border-color:#8ab4f8"></div>承包地块(点击查看详情)</div>
+<div class="legend-item"><div class="swatch" style="background:rgba(255,193,7,.6);border-color:#ffc107"></div>嘎查村</div>
+<div style="margin-top:8px;padding-top:8px;border-top:1px solid rgba(138,180,248,.15)">
+<div class="legend-item"><div class="swatch" style="background:transparent;border:2.5px solid #2196F3"></div>区县界</div>
+<div class="legend-item"><div class="swatch" style="background:transparent;border:1.5px dashed #FF9800"></div>乡镇界</div>
+<div class="legend-item"><div class="swatch" style="background:rgba(33,150,243,.75);border-color:#2196F3"></div>区县政府驻地</div>
+<div class="legend-item"><div class="swatch" style="background:rgba(255,152,0,.6);border-color:#FF9800"></div>乡镇政府驻地</div>
+</div>
+</div>
+<div class="panel plot-panel">
+<h3>地块列表</h3>
+<div id="plotItems"></div>
+</div>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="baotou_boundaries.js"></script>
+<script>
+// ====== CONFIG (替换以下配置) ======
+var CFG={
+  farmerName:'__FARMER__',       // 承包方名称
+  villageName:'__VILLAGE__',     // 嘎查村名称
+  townshipName:'__TOWNSHIP__',   // 乡镇名称
+  countyName:'__COUNTY__',       // 旗县名称
+  highlightTown:'__TOWNSHIP__'   // 高亮乡镇名(地块所在乡镇)
+};
+document.title=CFG.farmerName+' 地块卫星图';
+document.getElementById('farmerName').textContent=CFG.farmerName+' 地块分布图';
+document.getElementById('locationDesc').textContent=CFG.countyName+CFG.townshipName+CFG.villageName+' · 卫星图叠加';
+
+// ====== Plot Data (替换为实际地块数据，坐标为WGS84 [lng,lat]) ======
+var plotsData=[
+// {OBJECTID:1234,DKBM:"03037",CBDKMC:"二号井",CBFXM:"张三",ZLDWMC:"巴音新村",SCMJ:807.17,neighbors:"道路、道路、邻居1、邻居2",polygons:[[[110.72,41.47],[110.72,41.47],[110.72,41.47],[110.72,41.47]]],SHAPE_Leng:179.72}
+];
+
+var colors=['#FF6B6B','#4ECDC4','#45B7D1','#96CEB4','#FFEAA7','#DDA0DD','#98D8C8','#F7DC6F','#BB8FCE'];
+
+// ====== Map ======
+var map=L.map('map',{center:[41.46,110.73],zoom:14,maxZoom:20,minZoom:4,zoomControl:true,attributionControl:false});
+
+// ====== 天地图卫星底图 ======
+var tdtKey='b11578e50812a12bd62c4dcd3d9dd082';
+var tdtSat=L.tileLayer('https://t{s}.tianditu.gov.cn/DataServer?T=img_w&x={x}&y={y}&l={z}&tk='+tdtKey,{subdomains:'01234567',maxZoom:18,minZoom:4,attribution:'天地图'});
+var tdtLabel=L.tileLayer('https://t{s}.tianditu.gov.cn/DataServer?T=cia_w&x={x}&y={y}&l={z}&tk='+tdtKey,{subdomains:'01234567',maxZoom:18,minZoom:4,opacity:0.8});
+var esriSat=L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{maxZoom:19,minZoom:4,attribution:'Esri'});
+tdtSat.addTo(map);
+L.control.layers({'天地图卫星图':tdtSat,'Esri卫星图':esriSat},{'天地图注记':tdtLabel},{position:'topleft',collapsed:false}).addTo(map);
+
+// ====== Compute village center ======
+var allLng=0,allLat=0,ptCount=0;
+plotsData.forEach(function(p){p.polygons.forEach(function(poly){poly.forEach(function(pt){allLng+=pt[0];allLat+=pt[1];ptCount++})})});
+var villageLng=ptCount>0?allLng/ptCount:110.73;
+var villageLat=ptCount>0?allLat/ptCount:41.46;
+map.setView([villageLat,villageLng],14);
+
+// Village label
+var villageLabel=L.marker([villageLat,villageLng],{icon:L.divIcon({className:'village-label',html:CFG.villageName,iconSize:null,iconAnchor:[0,0]})});
+villageLabel.addTo(map);
+
+// ====== Plot Polygons ======
+var plotLayers=[],labelMarkers=[],allBounds=[];
+plotsData.forEach(function(plot,idx){
+var color=colors[idx%colors.length];
+var polygons=[];
+plot.polygons.forEach(function(poly){
+var latlngs=poly.map(function(pt){return[pt[1],pt[0]]});
+polygons.push(latlngs);
+allBounds=allBounds.concat(latlngs);
+});
+var polygon=L.polygon(polygons,{color:color,weight:2.5,opacity:1,fillColor:color,fillOpacity:0.25});
+var fp=polygons[0],cx=0,cy=0;
+fp.forEach(function(p){cx+=p[0];cy+=p[1]});
+cx/=fp.length;cy/=fp.length;
+var areaMu=(plot.SCMJ/666.67).toFixed(2);
+var popupHtml='<div class="popup-title">'+plot.CBDKMC+'</div>'+
+'<div class="popup-row"><span class="popup-label">地块编码</span><span class="popup-val">'+plot.DKBM+'</span></div>'+
+'<div class="popup-row"><span class="popup-label">承包方</span><span class="popup-val">'+plot.CBFXM+'</span></div>'+
+'<div class="popup-row"><span class="popup-label">所在旗</span><span class="popup-val">'+CFG.countyName+'</span></div>'+
+'<div class="popup-row"><span class="popup-label">所在乡镇</span><span class="popup-val">'+CFG.townshipName+'</span></div>'+
+'<div class="popup-row"><span class="popup-label">嘎查村</span><span class="popup-val">'+(plot.ZLDWMC||CFG.villageName)+'</span></div>'+
+'<div class="popup-row"><span class="popup-label">实测面积</span><span class="popup-val">'+plot.SCMJ.toFixed(2)+' ㎡ ('+areaMu+' 亩)</span></div>'+
+'<div class="popup-row"><span class="popup-label">周长</span><span class="popup-val">'+(plot.SHAPE_Leng||0).toFixed(2)+' m</span></div>'+
+'<div class="popup-row"><span class="popup-label">四至</span><span class="popup-val">'+(plot.neighbors||'无')+'</span></div>'+
+'<div class="popup-row"><span class="popup-label">坐标(WGS84)</span><span class="popup-val">'+fp[0][1].toFixed(6)+', '+fp[0][0].toFixed(6)+'</span></div>';
+polygon.bindPopup(popupHtml,{maxWidth:320});
+polygon.addTo(map);
+plotLayers.push(polygon);
+var label=L.marker([cy,cx],{icon:L.divIcon({className:'plot-label',html:plot.CBDKMC,iconSize:null,iconAnchor:[0,0]})});
+label.addTo(map);
+labelMarkers.push(label);
+});
+if(allBounds.length>0){map.fitBounds(allBounds,{padding:[60,60],maxZoom:16})}
+
+// ====== Plot List ======
+var itemsDiv=document.getElementById('plotItems');
+plotsData.forEach(function(plot,idx){
+var color=colors[idx%colors.length];
+var areaMu=(plot.SCMJ/666.67).toFixed(2);
+var div=document.createElement('div');
+div.className='plot-item';
+div.style.borderColor=color;
+div.innerHTML='<div class="nm">'+plot.CBDKMC+' <span style="color:#80868b;font-size:11px">('+plot.DKBM+')</span></div><div class="mt">'+areaMu+' 亩 · '+plot.SCMJ.toFixed(0)+'㎡</div>';
+div.onclick=function(){map.fitBounds(plotLayers[idx].getBounds(),{padding:[100,100]});plotLayers[idx].openPopup()};
+itemsDiv.appendChild(div);
+});
+
+// ====== Stats ======
+document.getElementById('plotCount').textContent=plotsData.length;
+var totalM2=plotsData.reduce(function(s,p){return s+p.SCMJ},0);
+document.getElementById('totalMu').textContent=(totalM2/666.67).toFixed(1);
+document.getElementById('totalM2').textContent=(totalM2/1000).toFixed(1)+'k';
+
+// ====== Label Toggle ======
+var labelsVisible=true;
+document.getElementById('labelToggle').onclick=function(){
+labelsVisible=!labelsVisible;
+labelMarkers.forEach(function(m){labelsVisible?m.addTo(map):map.removeLayer(m)});
+if(labelsVisible){villageLabel.addTo(map)}else{map.removeLayer(villageLabel)}
+this.textContent=labelsVisible?'隐藏标签':'显示标签';
+};
+
+// ====== Administrative Boundary Layers ======
+var districtLayers=[],townshipLayers=[];
+var boundaryLayerGroup=L.layerGroup();
+var boundariesVisible=true;
+
+if(typeof districtBoundaries!=='undefined'){
+districtBoundaries.forEach(function(d){
+var coords=d.coords;var polygons=[];
+if(d.type==='Polygon'){var latlngs=coords[0].map(function(pt){return[pt[1],pt[0]]});polygons.push(latlngs)}
+else{coords.forEach(function(poly){var latlngs=poly[0].map(function(pt){return[pt[1],pt[0]]});polygons.push(latlngs)})}
+var layer=L.polygon(polygons,{color:'#2196F3',weight:2.5,opacity:0.9,fillColor:'#2196F3',fillOpacity:0.03,dashArray:''});
+layer.bindPopup('<div class="popup-title">'+d.name+'</div><div class="popup-row"><span class="popup-label">级别</span><span class="popup-val">区/县/旗</span></div>',{maxWidth:220});
+districtLayers.push(layer);boundaryLayerGroup.addLayer(layer);
+});
+}
+
+if(typeof townshipBoundaries!=='undefined'){
+townshipBoundaries.forEach(function(t){
+var coords=t.coords;var polygons=[];
+if(t.type==='Polygon'){var latlngs=coords[0].map(function(pt){return[pt[1],pt[0]]});polygons.push(latlngs)}
+else{coords.forEach(function(poly){var latlngs=poly[0].map(function(pt){return[pt[1],pt[0]]});polygons.push(latlngs)})}
+var isHighlight=(t.name===CFG.highlightTown);
+var layer=L.polygon(polygons,{color:isHighlight?'#4CAF50':'#FF9800',weight:isHighlight?2.5:1.5,opacity:isHighlight?1:0.7,fillColor:isHighlight?'#4CAF50':'#FF9800',fillOpacity:isHighlight?0.12:0.02,dashArray:isHighlight?'':'6,4'});
+layer.bindPopup('<div class="popup-title">'+t.name+'</div><div class="popup-row"><span class="popup-label">级别</span><span class="popup-val">乡/镇/苏木</span></div><div class="popup-row"><span class="popup-label">所属区县</span><span class="popup-val">'+t.district+'</span></div>',{maxWidth:220});
+townshipLayers.push(layer);boundaryLayerGroup.addLayer(layer);
+});
+}
+boundaryLayerGroup.addTo(map);
+
+// ====== Boundary Labels ======
+var boundaryLabelMarkers=[],townLabelMarkers=[];
+function getCentroid(coords,type){var ring;if(type==='Polygon'){ring=coords[0]}else{ring=coords[0][0]}var cx=0,cy=0;ring.forEach(function(pt){cx+=pt[0];cy+=pt[1]});return[cy/ring.length,cx/ring.length]}
+
+if(typeof districtBoundaries!=='undefined'){
+districtBoundaries.forEach(function(d){
+var c=getCentroid(d.coords,d.type);
+var m=L.marker(c,{icon:L.divIcon({className:'dist-boundary-label',html:d.name,iconSize:null,iconAnchor:[0,0]})});
+boundaryLabelMarkers.push(m);m.addTo(map);
+});
+}
+
+if(typeof townshipBoundaries!=='undefined'){
+townshipBoundaries.forEach(function(t){
+var c=getCentroid(t.coords,t.type);
+var isHighlight=(t.name===CFG.highlightTown);
+var cls=isHighlight?'town-boundary-label-highlight':'town-boundary-label';
+var m=L.marker(c,{icon:L.divIcon({className:cls,html:t.name,iconSize:null,iconAnchor:[0,0]})});
+townLabelMarkers.push(m);
+});
+}
+
+function updateTownLabels(){var z=map.getZoom();var show=z>=9;townLabelMarkers.forEach(function(m){show?m.addTo(map):map.removeLayer(m)})}
+updateTownLabels();
+map.on('zoomend',updateTownLabels);
+
+document.getElementById('boundaryToggle').onclick=function(){
+boundariesVisible=!boundariesVisible;
+if(boundariesVisible){boundaryLayerGroup.addTo(map);boundaryLabelMarkers.forEach(function(m){m.addTo(map)});updateTownLabels();this.textContent='隐藏行政区划'}
+else{map.removeLayer(boundaryLayerGroup);boundaryLabelMarkers.forEach(function(m){map.removeLayer(m)});townLabelMarkers.forEach(function(m){map.removeLayer(m)});this.textContent='显示行政区划'}
+};
+
+L.control.scale({position:'bottomright',imperial:false,maxWidth:200}).addTo(map);
+</script>
+</body>
+</html>
