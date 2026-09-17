@@ -64,14 +64,26 @@ void main(){vec4 art=texture2D(tBack,vec2(1.-vUv.x,vUv.y));vec2 p=vUv-.5;float f
 }`;
 function backTexture(){const c=document.createElement('canvas');c.width=1024;c.height=1536;const ctx=c.getContext('2d');ctx.clearRect(0,0,1024,1536);ctx.strokeStyle='#c2a368';ctx.lineWidth=2;ctx.strokeRect(74,74,876,1388);ctx.strokeRect(87,87,850,1362);ctx.save();ctx.translate(512,650);ctx.rotate(Math.PI/4);ctx.strokeRect(-210,-210,420,420);ctx.strokeRect(-196,-196,392,392);ctx.restore();ctx.textAlign='center';ctx.fillStyle='#dbc18b';ctx.font='166px KaiTi, STKaiti, serif';ctx.fillText(config.subtitle?.includes('雷')?'雷':'幻',512,709);ctx.font='31px KaiTi, STKaiti, serif';ctx.fillText(config.collection||'幻光典藏',512,1050);ctx.font='20px Georgia';ctx.fillStyle='#a09a8f';ctx.fillText('HOLOGRAPHIC ATELIER',512,1114);ctx.font='20px Georgia';ctx.fillText(config.edition||'001',512,1310);const tex=new THREE.CanvasTexture(c);tex.colorSpace=THREE.NoColorSpace;return tex;}
 async function init(){
+ const steps=['正在读取配置…','正在初始化渲染器…','正在加载贴图素材…','正在加载3D模型…','正在编译着色器…'];
+ let step=0;
+ function setStep(msg){loading.innerHTML=msg+'<div style="margin-top:14px;width:160px;height:3px;background:#ffffff20;border-radius:2px;overflow:hidden"><div class="bar" style="height:100%;width:'+((step)/5*100)+'%;background:var(--gold);transition:width .4s;border-radius:2px"></div></div>';}
+
+ setStep(steps[0]);
  config=await fetch('./card-config.json').then(r=>{if(!r.ok)throw Error('找不到卡牌配置');return r.json();});
  document.title=config.title+' · 幻光典藏';for(const [id,key]of Object.entries({'card-title':'title','collection':'collection','subtitle':'subtitle','description':'description','tagline':'tagline','technique':'technique','edition':'edition'}))if(config[key])$(id).textContent=config[key];
+
+ step=1;setStep(steps[1]);
  renderer=new THREE.WebGLRenderer({antialias:true,alpha:false,preserveDrawingBuffer:true,powerPreference:'high-performance'});renderer.setClearColor(0xffffff,1);renderer.setPixelRatio(Math.min(devicePixelRatio,1.75));renderer.outputColorSpace=THREE.SRGBColorSpace;renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.12;stage.append(renderer.domElement);
  composer=new EffectComposer(renderer);composer.addPass(new RenderPass(scene,camera));composer.addPass(new UnrealBloomPass(new THREE.Vector2(720,1000),.18,.35,1.0));composer.addPass(new OutputPass());
+
+ step=2;setStep(steps[2]);
  const loader=new THREE.TextureLoader();const names=['subject','background','text','lineart'];const textures=await Promise.all(names.map(name=>loader.loadAsync(config.assets[name])));textures.forEach(t=>{t.colorSpace=THREE.NoColorSpace;t.anisotropy=Math.min(renderer.capabilities.getMaxAnisotropy(),8);});
+
+ step=3;setStep(steps[3]);
  const prm=config.parameters||{};uniforms={tSubject:{value:textures[0]},tBackground:{value:textures[1]},tText:{value:textures[2]},tLine:{value:textures[3]},tBack:{value:backTexture()},uTime:{value:0},uView:{value:new THREE.Vector3(0,0,1)},uFoil:{value:prm.foil??.65},uScale:{value:prm.subjectScale??1.25},uDepth:{value:prm.subjectDepth??.4},uBgDepth:{value:prm.backgroundDepth??-.25},uSafeScale:{value:config.safeArea?.scale??1.12},uSafeOffset:{value:new THREE.Vector2(...(config.safeArea?.offset??[-.06,-.085]))}};
  const frontMat=new THREE.ShaderMaterial({uniforms,vertexShader:vertex,fragmentShader:fragment,side:THREE.FrontSide});const edgeMat=new THREE.ShaderMaterial({uniforms,vertexShader:vertex,fragmentShader:edgeFragment});const backMat=new THREE.ShaderMaterial({uniforms,vertexShader:vertex,fragmentShader:backFragment});const goldMat=new THREE.MeshBasicMaterial({color:0xbfa26b});
  const gltf=await new GLTFLoader().loadAsync(config.assets.model);root=new THREE.Group();root.add(gltf.scene);scene.add(root);
+ step=4;setStep(steps[4]);
  gltf.scene.traverse(ob=>{if(!ob.isMesh)return;const role=ob.material?.name;if(role==='web_front'){ob.material=frontMat;face=ob;}else if(role==='web_back')ob.material=backMat;else if(role==='web_gold')ob.material=goldMat;else if(role==='web_text')ob.visible=false;else ob.material=edgeMat;});
  if(!face)throw Error('Blender 模型中缺少 web_front 材质，请重新导出模型。');
  setupControls();new ResizeObserver(resize).observe(stage);resize();loading.remove();
