@@ -2,43 +2,50 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>台球小游戏</title>
 <style>
-  * { box-sizing: border-box; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
   html, body {
-    margin: 0; padding: 0;
-    min-height: 100%;
-    background: radial-gradient(circle at 50% 0%, #2a3138 0%, #14181c 70%);
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: #0d1115;
     font-family: system-ui, -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
-    display: flex; flex-direction: column;
-    align-items: center; justify-content: center;
-    padding: 18px;
-    gap: 12px;
   }
   .game-wrap {
-    width: min(96vw, 1000px);
+    width: 100vw;
+    height: 100dvh;
     position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
   }
   canvas {
     width: 100%;
-    height: auto;
+    height: 100%;
     display: block;
-    border-radius: 18px;
-    box-shadow: 0 22px 50px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.06);
     cursor: crosshair;
     touch-action: none;
   }
   .bar {
-    width: min(96vw, 1000px);
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 14px;
+    padding: 10px 18px;
     color: #c9d4de;
     font-size: 15px;
     letter-spacing: 0.3px;
+    background: linear-gradient(to top, rgba(13,17,21,0.92), transparent);
+    pointer-events: none;
+    z-index: 10;
   }
+  .bar button { pointer-events: auto; }
   .hint {
     opacity: 0.65;
     font-size: 13px;
@@ -63,7 +70,7 @@
 <body>
 
 <div class="game-wrap">
-  <canvas id="game" width="960" height="540"></canvas>
+  <canvas id="game" width="540" height="960"></canvas>
 </div>
 
 <div class="bar">
@@ -84,18 +91,18 @@
   const W = canvas.width;
   const H = canvas.height;
 
-  // ---------- 桌面几何 ----------
-  const TABLE = { x: 50, y: 50, w: 860, h: 440 };
+  // ---------- 桌面几何（旋转90°：窄高型）----------
+  const TABLE = { x: 25, y: 25, w: 490, h: 910 };
   const BALL_R   = 13;
   const POCKET_R = 26;
 
   // ---------- 物理参数（惯性更强、更顺滑）----------
-  const DECEL         = 200;   // 基础滚动摩擦（原来 520，现在球滑得更远）
-  const BRAKE_SPEED   = 70;    // 低于此速度触发额外刹车
-  const BRAKE_DECEL   = 560;   // 低速时刹车更强，避免球慢慢爬
-  const MAX_SPEED     = 2000;  // 最大击球速度（原来 1400）
-  const RESTITUTION   = 0.96;  // 球与球之间的弹性
-  const CUSHION_REST  = 0.82;  // 库边弹性
+  const DECEL         = 200;
+  const BRAKE_SPEED   = 70;
+  const BRAKE_DECEL   = 560;
+  const MAX_SPEED     = 2000;
+  const RESTITUTION   = 0.96;
+  const CUSHION_REST  = 0.82;
   const STEP          = 1 / 240;
 
   // ---------- 球袋 ----------
@@ -240,7 +247,7 @@
       b.y += b.vy * dt;
     }
 
-    // 2. 滚动摩擦（高速段摩擦弱 → 惯性感强；低速段刹车强 → 干净停下）
+    // 2. 滚动摩擦
     for (const b of balls) {
       if (!b.active) continue;
       const sp = Math.hypot(b.vx, b.vy);
@@ -454,7 +461,9 @@
     roundRect(ctx, 5, 5, W - 10, H - 10, 15);
     ctx.stroke();
 
-    const felt = ctx.createRadialGradient(W / 2, H / 2, 80, W / 2, H / 2, 640);
+    const cx = TABLE.x + TABLE.w / 2;
+    const cy = TABLE.y + TABLE.h / 2;
+    const felt = ctx.createRadialGradient(cx, cy, 80, cx, cy, 520);
     felt.addColorStop(0, "#1fa268");
     felt.addColorStop(1, "#0a6039");
     ctx.fillStyle = felt;
