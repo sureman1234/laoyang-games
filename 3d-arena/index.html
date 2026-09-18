@@ -1,0 +1,537 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>铁笼竞技场 3D</title>
+<style>
+  html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;position:fixed;inset:0;
+    background:#05070c;touch-action:none;overscroll-behavior:none;
+    -webkit-user-select:none;user-select:none;-webkit-touch-callout:none;
+    -webkit-tap-highlight-color:transparent;}
+  :root{
+    --p1:#3fc7ff;
+    --p2:#ff5a52;
+    --gold:#ffc24d;
+    --ink:#e8eef7;
+    --dim:#8b97ab;
+    --panel:rgba(10,14,22,.82);
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  html,body{width:100%;height:100%;overflow:hidden;background:#05070c;}
+  body{
+    font-family:"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+    color:var(--ink);
+    -webkit-user-select:none;user-select:none;
+    -webkit-tap-highlight-color:transparent;
+  }
+  #scene{display:block;width:100%;height:100%;}
+
+  /* ============ HUD ============ */
+  #hud{position:fixed;inset:0;pointer-events:none;opacity:0;transition:opacity .4s;}
+  #hud.on{opacity:1;}
+
+  .topbar{
+    position:absolute;top:0;left:0;right:0;
+    display:flex;align-items:flex-start;justify-content:space-between;
+    padding:14px 20px;gap:14px;
+  }
+  .side{flex:1;max-width:44%;}
+  .side.right{text-align:right;}
+
+  .namerow{display:flex;align-items:baseline;gap:10px;margin-bottom:5px;}
+  .side.right .namerow{justify-content:flex-end;}
+  .fname{font-size:17px;font-weight:700;letter-spacing:1px;text-shadow:0 2px 6px #000;}
+  .fsub{font-size:11px;color:var(--dim);letter-spacing:1px;}
+
+  .hpwrap{
+    position:relative;height:20px;
+    background:rgba(0,0,0,.55);
+    border:1px solid rgba(255,255,255,.16);
+    box-shadow:0 3px 14px rgba(0,0,0,.5), inset 0 0 12px rgba(0,0,0,.6);
+    overflow:hidden;
+    clip-path:polygon(0 0,100% 0,calc(100% - 10px) 100%,0 100%);
+  }
+  .side.right .hpwrap{clip-path:polygon(10px 0,100% 0,100% 100%,0 100%);}
+  .hpdelay,.hpfill{position:absolute;top:0;bottom:0;left:0;width:100%;transform-origin:left center;transition:transform .1s linear;}
+  .side.right .hpdelay,.side.right .hpfill{transform-origin:right center;}
+  .hpdelay{background:#ffd76a;opacity:.85;transition:transform .45s cubic-bezier(.2,0,.3,1) .18s;}
+  .hpfill{background:linear-gradient(180deg,#8ff0ff,#2aa8e0 45%,#1367a8);}
+  .side.right .hpfill{background:linear-gradient(180deg,#ffa39c,#e8433a 45%,#8d1a15);}
+  .hpfill.low{animation:pulse .55s infinite alternate;}
+  @keyframes pulse{from{filter:brightness(1);}to{filter:brightness(1.85);}}
+  .hpgloss{position:absolute;inset:0;background:linear-gradient(180deg,rgba(255,255,255,.28),rgba(255,255,255,0) 55%);}
+
+  .centerbox{text-align:center;min-width:120px;}
+  #timer{
+    font-size:44px;font-weight:800;line-height:1;
+    color:#fff;text-shadow:0 0 18px rgba(120,200,255,.55),0 3px 8px #000;
+    font-variant-numeric:tabular-nums;
+  }
+  #timer.warn{color:#ff6a5c;text-shadow:0 0 22px rgba(255,80,60,.8);animation:pulse .5s infinite alternate;}
+  #roundLabel{font-size:12px;letter-spacing:3px;color:var(--gold);margin-top:3px;text-shadow:0 2px 6px #000;}
+  #stageLabel{font-size:11px;letter-spacing:2px;color:var(--dim);margin-top:2px;}
+
+  /* 连击 */
+  #combo{
+    position:absolute;left:50%;top:120px;transform:translateX(-50%);
+    font-size:30px;font-weight:900;font-style:italic;color:var(--gold);
+    text-shadow:0 0 20px rgba(255,180,60,.8),0 3px 8px #000;
+    opacity:0;transition:opacity .18s;
+  }
+  #combo.on{opacity:1;}
+  #combo small{font-size:15px;font-style:normal;letter-spacing:2px;display:block;color:#fff;}
+
+  /* 大字横幅 */
+  #banner{
+    position:absolute;left:50%;top:42%;transform:translate(-50%,-50%) scale(.4);
+    font-size:96px;font-weight:900;letter-spacing:8px;font-style:italic;
+    color:#fff;text-shadow:0 0 40px rgba(255,120,40,.9),0 8px 26px #000;
+    opacity:0;
+  }
+  #banner.show{animation:bannerIn .9s cubic-bezier(.15,.9,.25,1) forwards;}
+  @keyframes bannerIn{
+    0%{opacity:0;transform:translate(-50%,-50%) scale(2.2);filter:blur(8px);}
+    22%{opacity:1;transform:translate(-50%,-50%) scale(1);filter:blur(0);}
+    78%{opacity:1;transform:translate(-50%,-50%) scale(1);}
+    100%{opacity:0;transform:translate(-50%,-50%) scale(1.12);}
+  }
+
+  /* 提示 */
+  #hint{
+    position:absolute;left:50%;bottom:26px;transform:translateX(-50%);
+    font-size:12px;color:var(--dim);letter-spacing:1px;
+    background:rgba(0,0,0,.45);padding:6px 16px;border-radius:20px;
+  }
+  #hint b{color:var(--ink);font-weight:600;}
+
+  /* 受击闪屏 */
+  #flash{position:fixed;inset:0;background:#fff;opacity:0;pointer-events:none;}
+
+  /* ============ 全屏面板 ============ */
+  .screen{
+    position:fixed;inset:0;display:flex;align-items:center;justify-content:center;
+    background:radial-gradient(ellipse at 50% 35%,rgba(28,42,70,.72),rgba(4,6,11,.94) 70%);
+    backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);
+    z-index:20;padding:20px;overflow:auto;
+  }
+  .screen.hidden{display:none;}
+  .panel{
+    width:min(760px,94vw);
+    background:linear-gradient(180deg,rgba(18,24,38,.96),rgba(9,12,20,.97));
+    border:1px solid rgba(120,180,255,.22);
+    box-shadow:0 30px 90px rgba(0,0,0,.7),inset 0 1px 0 rgba(255,255,255,.08);
+    border-radius:14px;padding:30px 34px 26px;
+  }
+  .logo{text-align:center;margin-bottom:20px;}
+  .logo h1{
+    font-size:44px;font-weight:900;letter-spacing:10px;font-style:italic;
+    background:linear-gradient(180deg,#fff,#ffb04d 55%,#d8541f);
+    -webkit-background-clip:text;background-clip:text;color:transparent;
+    text-shadow:0 6px 30px rgba(255,120,40,.25);
+  }
+  .logo .en{
+    font-size:12px;letter-spacing:9px;color:#7fb6ff;margin-top:2px;
+    text-shadow:0 0 16px rgba(90,160,255,.5);
+  }
+  .logo .rule{height:1px;margin:14px auto 0;width:70%;
+    background:linear-gradient(90deg,transparent,rgba(255,180,80,.7),transparent);}
+
+  .keys{
+    display:grid;grid-template-columns:repeat(auto-fit,minmax(168px,1fr));
+    gap:8px;margin-bottom:20px;
+  }
+  .keyrow{
+    display:flex;align-items:center;gap:9px;
+    background:rgba(255,255,255,.045);border:1px solid rgba(255,255,255,.07);
+    border-radius:8px;padding:8px 11px;
+  }
+  kbd{
+    display:inline-flex;align-items:center;justify-content:center;
+    min-width:26px;height:25px;padding:0 7px;
+    background:linear-gradient(180deg,#3b4762,#222b3c);
+    border:1px solid rgba(255,255,255,.18);border-bottom-width:2px;
+    border-radius:5px;font-size:12px;font-weight:700;color:#dfe9f7;
+    font-family:inherit;
+  }
+  .keyrow span{font-size:12.5px;color:#c3cede;}
+
+  .diffrow{display:flex;gap:10px;justify-content:center;margin-bottom:22px;flex-wrap:wrap;}
+  .diff{
+    pointer-events:auto;cursor:pointer;
+    padding:9px 20px;border-radius:8px;
+    background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.14);
+    color:#aab7c9;font-size:13px;letter-spacing:2px;font-weight:600;
+    transition:all .16s;
+  }
+  .diff:hover{background:rgba(255,255,255,.1);color:#fff;}
+  .diff.sel{
+    background:linear-gradient(180deg,rgba(255,180,77,.9),rgba(216,84,31,.9));
+    border-color:rgba(255,200,120,.8);color:#1a1005;
+    box-shadow:0 0 22px rgba(255,150,60,.45);
+  }
+
+  .btnrow{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;}
+  .btn{
+    pointer-events:auto;cursor:pointer;
+    padding:13px 40px;border-radius:9px;border:none;
+    font-family:inherit;font-size:16px;font-weight:800;letter-spacing:4px;
+    background:linear-gradient(180deg,#ffc24d,#e0701f);
+    color:#20130a;
+    box-shadow:0 8px 26px rgba(255,140,40,.35),inset 0 1px 0 rgba(255,255,255,.5);
+    transition:transform .12s,box-shadow .12s,filter .12s;
+  }
+  .btn:hover{transform:translateY(-2px);box-shadow:0 12px 32px rgba(255,140,40,.5);filter:brightness(1.06);}
+  .btn:active{transform:translateY(1px);}
+  .btn.ghost{
+    background:rgba(255,255,255,.07);color:#cfdaea;
+    border:1px solid rgba(255,255,255,.18);box-shadow:none;font-weight:600;
+  }
+  .btn.ghost:hover{background:rgba(255,255,255,.14);box-shadow:none;}
+
+  /* ============ 返回游戏站主页（统一导航） ============ */
+  .homebar{
+    display:flex;justify-content:center;gap:10px;flex-wrap:wrap;
+    margin-top:20px;padding-top:16px;
+    border-top:1px solid rgba(255,255,255,.09);
+  }
+  .homelink{
+    pointer-events:auto;cursor:pointer;text-decoration:none;
+    display:inline-flex;align-items:center;gap:7px;
+    padding:9px 20px;border-radius:8px;
+    background:rgba(255,255,255,.05);
+    border:1px solid rgba(255,255,255,.14);
+    color:#aab7c9;font-size:13px;font-weight:600;letter-spacing:2px;
+    transition:all .16s;
+  }
+  .homelink:hover{
+    background:rgba(126,224,255,.12);
+    border-color:rgba(126,224,255,.55);
+    color:#dff4ff;
+    transform:translateY(-2px);
+    box-shadow:0 6px 20px rgba(126,224,255,.22);
+  }
+  .homelink:active{transform:translateY(0);}
+  .homelink svg{width:14px;height:14px;flex:none;}
+
+  /* 战斗中的浮动返回入口（右上暂停键旁） */
+  #tHome{
+    position:fixed;right:calc(66px + env(safe-area-inset-right));top:calc(12px + env(safe-area-inset-top));
+    width:46px;height:46px;font-size:18px;border-radius:12px;
+    background:rgba(0,0,0,.4);z-index:20;
+    text-decoration:none;align-items:center;justify-content:center;
+    color:#e8eef7;border:1px solid rgba(255,255,255,.24);
+  }
+  #tHome.show{display:flex;}
+  #hud .homebtn{
+    position:absolute;right:70px;top:14px;pointer-events:auto;
+    display:inline-flex;align-items:center;gap:6px;
+    padding:6px 13px;border-radius:8px;text-decoration:none;
+    background:rgba(0,0,0,.42);border:1px solid rgba(255,255,255,.16);
+    color:#b9c6d8;font-size:12px;letter-spacing:1px;
+    transition:all .16s;
+  }
+  #hud .homebtn:hover{background:rgba(126,224,255,.18);border-color:rgba(126,224,255,.5);color:#e6f6ff;}
+
+  .result{margin:6px 0 20px;}
+  #resTitle{
+    text-align:center;font-size:52px;font-weight:900;letter-spacing:14px;font-style:italic;
+    text-shadow:0 8px 34px rgba(0,0,0,.8);
+  }
+  #resTitle.win{background:linear-gradient(180deg,#fff,#ffd06a 50%,#e08a1e);-webkit-background-clip:text;background-clip:text;color:transparent;}
+  #resTitle.lose{background:linear-gradient(180deg,#dfe6f0,#8d97a8 60%,#4a5364);-webkit-background-clip:text;background-clip:text;color:transparent;}
+  #resSub{text-align:center;font-size:13.5px;color:#9fb0c6;letter-spacing:2px;margin-top:6px;}
+  .statgrid{
+    display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:20px 0 22px;
+  }
+  .stat{
+    background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.08);
+    border-radius:8px;padding:10px 6px;text-align:center;
+  }
+  .stat b{display:block;font-size:22px;color:#fff;font-weight:800;}
+  .stat span{font-size:10.5px;color:#8b97ab;letter-spacing:1px;}
+
+  /* 加载/错误 */
+  #boot{
+    position:fixed;inset:0;display:flex;align-items:center;justify-content:center;
+    flex-direction:column;gap:14px;background:#05070c;z-index:50;color:#8b97ab;
+    font-size:13px;letter-spacing:3px;
+  }
+  #boot.hidden{display:none;}
+  .spin{
+    width:38px;height:38px;border:3px solid rgba(255,255,255,.12);
+    border-top-color:#ffc24d;border-radius:50%;animation:sp .9s linear infinite;
+  }
+  @keyframes sp{to{transform:rotate(360deg);}}
+
+  /* ============ 触屏 ============ */
+  #touch{position:fixed;inset:0;display:none;z-index:15;pointer-events:none;}
+  #touch.on{display:block;}
+
+  /* 左半屏虚拟摇杆捕获区（透明，手指落下即生成摇杆） */
+  #stickZone{
+    position:absolute;left:0;top:0;width:50%;height:100%;
+    pointer-events:auto;touch-action:none;
+  }
+  #stick{
+    position:absolute;display:none;width:120px;height:120px;margin:-60px 0 0 -60px;
+    border-radius:50%;border:2px solid rgba(255,255,255,.35);
+    background:radial-gradient(circle,rgba(255,255,255,.10),rgba(255,255,255,.03) 70%,transparent);
+  }
+  #knob{
+    position:absolute;width:52px;height:52px;left:50%;top:50%;
+    transform:translate(-50%,-50%);border-radius:50%;
+    background:rgba(255,255,255,.32);border:1px solid rgba(255,255,255,.5);
+    box-shadow:0 0 14px rgba(120,200,255,.4);
+  }
+
+  /* 攻击按钮 */
+  .tbtn{
+    position:absolute;pointer-events:auto;touch-action:none;
+    display:flex;align-items:center;justify-content:center;
+    border-radius:50%;border:1px solid rgba(255,255,255,.24);
+    background:rgba(255,255,255,.10);color:#e8eef7;
+    font-size:14px;font-weight:700;letter-spacing:0;
+    backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px);
+    box-shadow:0 2px 10px rgba(0,0,0,.35);
+  }
+  .tbtn:active,.tbtn.down{background:rgba(255,190,90,.55);border-color:rgba(255,220,140,.9);transform:scale(.94);}
+  .tbtn.atk{width:74px;height:74px;}
+  .tbtn.big{width:66px;height:66px;}
+  /* 右下攻击簇 */
+  #atkGrp{position:absolute;right:calc(18px + env(safe-area-inset-right));bottom:calc(26px + env(safe-area-inset-bottom));width:210px;height:210px;}
+  #tU{right:118px;bottom:118px;}      /* 拳 */
+  #tI{right:24px;bottom:140px;}       /* 重拳 */
+  #tJ{right:140px;bottom:24px;}       /* 踢 */
+  #tK{right:46px;bottom:46px;font-size:12px;} /* 旋踢 */
+  /* 左侧技能键 */
+  #tL{right:calc(212px + env(safe-area-inset-right));bottom:calc(26px + env(safe-area-inset-bottom));} /* 防 */
+  #tD{right:calc(212px + env(safe-area-inset-right));bottom:calc(100px + env(safe-area-inset-bottom));} /* 闪 */
+  #tJmp{right:calc(212px + env(safe-area-inset-right));bottom:calc(174px + env(safe-area-inset-bottom));} /* 跳 */
+  /* 暂停（仅触屏显示，桌面用 P 键） */
+  #tPause{position:fixed;right:calc(12px + env(safe-area-inset-right));top:calc(12px + env(safe-area-inset-top));
+    width:46px;height:46px;font-size:18px;border-radius:12px;background:rgba(0,0,0,.4);z-index:20;display:none;}
+  body.isTouch #tPause{display:flex;}
+  body.isTouch #hud .homebtn{right:70px;}
+
+  #hint .touchOnly{display:none;}
+  .keysTouch{display:none;}
+  @media (pointer:coarse){#hint .kbdOnly{display:none;}#hint .touchOnly{display:inline;}.keys{display:none;}.keysTouch{display:block;}}
+  @media(max-width:640px){
+    .panel{padding:22px 18px;}
+    .logo h1{font-size:32px;letter-spacing:6px;}
+    #timer{font-size:32px;}
+    .fname{font-size:14px;}
+    .statgrid{grid-template-columns:repeat(2,1fr);}
+    #banner{font-size:min(58px,13vw);}
+  }
+
+  /* 竖屏手机：按钮重排，防/闪/跳横排上移，避免伸进左半屏摇杆区 */
+  @media(max-width:560px){
+    #stickZone{width:46%;}
+    .tbtn.atk{width:62px;height:62px;}
+    .tbtn.big{width:52px;height:52px;font-size:13px;}
+    #atkGrp{width:190px;height:190px;right:calc(10px + env(safe-area-inset-right));bottom:calc(20px + env(safe-area-inset-bottom));}
+    #tU{right:106px;bottom:106px;}
+    #tI{right:18px;bottom:126px;}
+    #tJ{right:126px;bottom:18px;}
+    #tK{right:46px;bottom:46px;}
+    #tJmp{right:calc(12px + env(safe-area-inset-right));bottom:calc(224px + env(safe-area-inset-bottom));}
+    #tD{right:calc(76px + env(safe-area-inset-right));bottom:calc(224px + env(safe-area-inset-bottom));}
+    #tL{right:calc(140px + env(safe-area-inset-right));bottom:calc(224px + env(safe-area-inset-bottom));}
+    /* 战斗中返回键：避开右上暂停键与右半屏按钮簇 */
+    #hud .homebtn{right:12px;top:calc(66px + env(safe-area-inset-top));left:auto;padding:5px 10px;font-size:11px;}
+    .panel .homebar{margin-top:16px;padding-top:13px;}
+    .homelink{padding:8px 16px;font-size:12px;letter-spacing:1px;}
+  }
+
+  /* 触屏设备：JS 给 body 打 isTouch 类后切换说明文字（比媒体查询可靠） */
+  body.isTouch #hint .kbdOnly{display:none;}
+  body.isTouch #hint .touchOnly{display:inline;}
+  body.isTouch .keys{display:none;}
+  body.isTouch .keysTouch{display:block;}
+  .side .fsub{max-width:26vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+</style>
+</head>
+<body>
+
+<canvas id="scene"></canvas>
+<div id="flash"></div>
+
+<div id="hud">
+  <div class="topbar">
+    <div class="side left">
+      <div class="namerow">
+        <span class="fname" id="p1Name">挑战者</span>
+        <span class="fsub" id="p1Sub">连胜 0</span>
+      </div>
+      <div class="hpwrap">
+        <div class="hpdelay" id="p1Delay"></div>
+        <div class="hpfill" id="p1Fill"><div class="hpgloss"></div></div>
+      </div>
+    </div>
+
+    <div class="centerbox">
+      <div id="timer">60</div>
+      <div id="roundLabel">第 1 场</div>
+      <div id="stageLabel">ROUND 1</div>
+    </div>
+
+    <div class="side right">
+      <div class="namerow">
+        <span class="fsub" id="p2Sub">铁笼新兵</span>
+        <span class="fname" id="p2Name">铁笼新兵</span>
+      </div>
+      <div class="hpwrap">
+        <div class="hpdelay" id="p2Delay"></div>
+        <div class="hpfill" id="p2Fill"><div class="hpgloss"></div></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="combo"></div>
+  <div id="banner"></div>
+  <a class="homebtn" href="https://sureman1234.github.io/laoyang-games/">
+    <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true" style="width:12px;height:12px"><path d="M8 1.2 1 7h2v7h3.4V9.6h3.2V14H13V7h2L8 1.2z"/></svg>
+    主页
+  </a>
+  <div id="hint">
+    <span class="kbdOnly"><b>WASD</b> 移动 · <b>空格</b> 跳 · <b>U/I</b> 拳 · <b>J/K</b> 腿 · <b>L</b> 防御 · <b>Shift</b> 闪 · <b>P</b> 暂停 · <b>M</b> 静音</span>
+    <span class="touchOnly"><b>左半屏</b>滑动移动 · <b>右下</b>拳脚攻击 · <b>防/闪/跳</b>左侧键 · <b>右上</b>暂停</span>
+  </div>
+</div>
+
+<!-- 开始界面 -->
+<div class="screen" id="startScreen">
+  <div class="panel">
+    <div class="logo">
+      <h1>铁笼竞技场</h1>
+      <div class="en">IRON ARENA 3D</div>
+      <div class="rule"></div>
+    </div>
+
+    <div class="keys">
+      <div class="keyrow"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd><span>移动走位</span></div>
+      <div class="keyrow"><kbd>空格</kbd><span>跳跃（可空中攻击）</span></div>
+      <div class="keyrow"><kbd>U</kbd><kbd>I</kbd><span>轻拳 / 重拳</span></div>
+      <div class="keyrow"><kbd>J</kbd><kbd>K</kbd><span>低踢 / 回旋踢</span></div>
+      <div class="keyrow"><kbd>L</kbd><span>防御（受伤前瞬间按下触发完美格挡）</span></div>
+      <div class="keyrow"><kbd>Shift</kbd><span>翻滚闪避（有无敌帧）</span></div>
+    </div>
+    <div class="keysTouch">
+      <div class="keyrow"><b>左半屏滑动</b><span>移动走位</span></div>
+      <div class="keyrow"><b>右下「跳」</b><span>跳跃（可空中攻击）</span></div>
+      <div class="keyrow"><b>右下「拳/重拳」</b><span>轻拳 / 重拳</span></div>
+      <div class="keyrow"><b>右下「踢/旋踢」</b><span>低踢 / 回旋踢</span></div>
+      <div class="keyrow"><b>左侧「防」</b><span>防御（受伤前瞬间按下触发完美格挡）</span></div>
+      <div class="keyrow"><b>左侧「闪」</b><span>翻滚闪避（有无敌帧）</span></div>
+    </div>
+
+    <div class="diffrow" id="diffRow">
+      <div class="diff sel" data-d="0">简单</div>
+      <div class="diff" data-d="1">普通</div>
+      <div class="diff" data-d="2">困难</div>
+      <div class="diff" data-d="3">噩梦</div>
+    </div>
+
+    <div class="btnrow">
+      <button class="btn" id="btnStart">开 始 战 斗</button>
+    </div>
+
+    <div class="homebar">
+      <a class="homelink" href="https://sureman1234.github.io/laoyang-games/">
+        <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 1.2 1 7h2v7h3.4V9.6h3.2V14H13V7h2L8 1.2z"/></svg>
+        返回游戏站主页
+      </a>
+    </div>
+  </div>
+</div>
+
+<!-- 结算界面 -->
+<div class="screen hidden" id="endScreen">
+  <div class="panel">
+    <div class="result">
+      <div id="resTitle">胜 利</div>
+      <div id="resSub">击败了对手</div>
+    </div>
+    <div class="statgrid">
+      <div class="stat"><b id="stHits">0</b><span>命 中</span></div>
+      <div class="stat"><b id="stCombo">0</b><span>最高连击</span></div>
+      <div class="stat"><b id="stParry">0</b><span>完美格挡</span></div>
+      <div class="stat"><b id="stTime">0</b><span>用时（秒）</span></div>
+    </div>
+    <div class="btnrow">
+      <button class="btn" id="btnNext">挑战下一位</button>
+      <button class="btn ghost" id="btnRetry">重新开始</button>
+    </div>
+
+    <div class="homebar">
+      <a class="homelink" href="https://sureman1234.github.io/laoyang-games/">
+        <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 1.2 1 7h2v7h3.4V9.6h3.2V14H13V7h2L8 1.2z"/></svg>
+        返回游戏站主页
+      </a>
+    </div>
+  </div>
+</div>
+
+<!-- 暂停界面 -->
+<div class="screen hidden" id="pauseScreen">
+  <div class="panel" style="width:min(420px,92vw)">
+    <div class="logo"><h1 style="font-size:30px;letter-spacing:8px">暂 停</h1><div class="rule"></div></div>
+    <div class="btnrow" style="flex-direction:column;align-items:center">
+      <button class="btn" id="btnResume" style="width:220px">继 续</button>
+      <button class="btn ghost" id="btnQuit" style="width:220px">回到主菜单</button>
+    </div>
+
+    <div class="homebar">
+      <a class="homelink" href="https://sureman1234.github.io/laoyang-games/">
+        <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 1.2 1 7h2v7h3.4V9.6h3.2V14H13V7h2L8 1.2z"/></svg>
+        返回游戏站主页
+      </a>
+    </div>
+  </div>
+</div>
+
+<!-- 触屏控制 -->
+<div id="touch">
+  <div id="stickZone"><div id="stick"><div id="knob"></div></div></div>
+  <div id="atkGrp">
+    <div class="tbtn atk" id="tU">拳</div>
+    <div class="tbtn atk" id="tI">重拳</div>
+    <div class="tbtn atk" id="tJ">踢</div>
+    <div class="tbtn atk" id="tK">旋踢</div>
+  </div>
+  <div class="tbtn big" id="tL">防</div>
+  <div class="tbtn big" id="tD">闪</div>
+  <div class="tbtn big" id="tJmp">跳</div>
+  <div class="tbtn" id="tPause">‖</div>
+</div>
+
+<div id="boot"><div class="spin"></div><div id="bootTxt">载入中</div></div>
+
+<script src="three.min.js" onerror="window.__threeLocalFail=1"></script>
+<script src="game.js"></script>
+<script>
+(function(){
+  function fail(msg){
+    document.getElementById('bootTxt').innerHTML = msg;
+    document.querySelector('#boot .spin').style.display='none';
+  }
+  function run(){
+    if(window.startApp){ try{ window.startApp(); }catch(e){ fail('启动失败：'+e.message); console.error(e);} }
+    else fail('脚本未载入');
+  }
+  if(window.THREE){ run(); return; }
+  // 本地库缺失 -> 走 CDN
+  var s=document.createElement('script');
+  s.src='https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js';
+  s.onload=function(){
+    if(window.THREE) run();
+    else fail('3D 引擎加载失败<br>请检查网络或确认 three.min.js 与页面在同一目录');
+  };
+  s.onerror=function(){ fail('3D 引擎加载失败<br>请把 three.min.js 放在页面同一目录，或连接网络后重试'); };
+  document.head.appendChild(s);
+})();
+</script>
+</body>
+</html>
