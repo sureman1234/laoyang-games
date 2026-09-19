@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>迷你模拟城市 3D</title>
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<style>
+  :root{
+    --bg:#0d1017;
+    --panel:rgba(18,23,33,.86);
+    --panel2:rgba(26,33,46,.9);
+    --line:rgba(255,255,255,.09);
+    --txt:#e8eef7;
+    --sub:#96a3b6;
+    --acc:#4ea8ff;
+    --good:#4ad991;
+    --warn:#ffb648;
+    --bad:#ff6b6b;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--txt);touch-action:none;
+    font-family:"PingFang SC","Microsoft YaHei","Segoe UI",system-ui,sans-serif;
+    -webkit-font-smoothing:antialiased;user-select:none}
+  canvas{display:block;position:fixed;inset:0;touch-action:none}
+
+  #hud{position:fixed;inset:0;pointer-events:none;z-index:5}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;
+    backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+    box-shadow:0 8px 30px rgba(0,0,0,.45)}
+
+  /* 顶部状态栏 */
+  #topbar{position:absolute;top:14px;left:14px;display:flex;gap:6px;align-items:stretch;pointer-events:auto}
+  .stat{padding:8px 14px;min-width:92px}
+  .stat .k{font-size:11px;color:var(--sub);letter-spacing:.5px}
+  .stat .v{font-size:18px;font-weight:600;margin-top:2px;font-variant-numeric:tabular-nums}
+  .stat .v small{font-size:11px;color:var(--sub);font-weight:400;margin-left:3px}
+  #clock{padding:8px 14px}
+  #clock .v{font-size:17px}
+
+  /* 右上 速度控制 */
+  #ctrl{position:absolute;top:14px;right:14px;display:flex;gap:6px;pointer-events:auto}
+  .btn{padding:8px 12px;border-radius:10px;background:var(--panel2);border:1px solid var(--line);
+    color:var(--txt);font-size:13px;cursor:pointer;transition:.15s;white-space:nowrap}
+  .btn:hover{background:#2c3648;border-color:rgba(255,255,255,.2)}
+  .btn.on{background:var(--acc);border-color:var(--acc);color:#04121f;font-weight:600}
+  .btn.mini{padding:6px 9px;font-size:12px}
+
+  /* 底部工具栏 */
+  #toolbar{position:absolute;left:50%;bottom:16px;transform:translateX(-50%);
+    display:flex;gap:8px;padding:10px;pointer-events:auto;max-width:96vw;overflow-x:auto}
+  .tool{width:88px;padding:9px 6px;border-radius:10px;background:var(--panel2);
+    border:1px solid var(--line);cursor:pointer;text-align:center;transition:.15s;flex:none}
+  .tool:hover{background:#2c3648;transform:translateY(-2px)}
+  .tool.on{background:var(--acc);border-color:#8cc6ff;box-shadow:0 0 0 2px rgba(78,168,255,.28)}
+  .tool.on .sw{box-shadow:0 0 0 2px rgba(0,0,0,.35) inset}
+  .sw{width:100%;height:22px;border-radius:6px;margin-bottom:6px}
+  .tool .n{font-size:12.5px;color:var(--txt)}
+  .tool .c{font-size:11px;color:var(--sub);margin-top:2px;font-variant-numeric:tabular-nums}
+  .tool.on .c{color:#06263f}
+  .tool .kb{position:absolute}
+  .kbd{font-size:10px;color:var(--sub);opacity:.7;margin-top:1px}
+  .tool.on .kbd{color:#06263f;opacity:.8}
+
+  /* 左侧信息/提示 */
+  #side{position:absolute;left:14px;bottom:16px;width:230px;padding:12px 14px;pointer-events:auto}
+  #side h3{font-size:12px;color:var(--sub);font-weight:500;letter-spacing:.6px;margin-bottom:8px}
+  .row{display:flex;justify-content:space-between;font-size:12.5px;padding:3px 0;color:var(--sub)}
+  .row b{color:var(--txt);font-weight:500;font-variant-numeric:tabular-nums}
+  .bar{height:5px;border-radius:3px;background:rgba(255,255,255,.1);overflow:hidden;margin:5px 0 9px}
+  .bar i{display:block;height:100%;border-radius:3px;transition:width .3s}
+  #taxrow{margin-top:8px;border-top:1px solid var(--line);padding-top:9px}
+  #tax{width:100%;accent-color:var(--acc);margin-top:5px}
+  #taxv{font-size:12px;color:var(--txt);font-variant-numeric:tabular-nums}
+
+  /* 右侧操作提示 */
+  #help{position:absolute;right:14px;bottom:16px;width:212px;padding:11px 13px;pointer-events:auto;font-size:12px;color:var(--sub);line-height:1.75}
+  #help b{color:var(--txt);font-weight:500}
+  #help .k{display:inline-block;min-width:16px;padding:0 5px;border-radius:4px;background:rgba(255,255,255,.09);
+    color:var(--txt);font-size:11px;text-align:center;margin-right:3px}
+
+  /* 常驻玩法卡 */
+  #guide{position:absolute;right:14px;top:70px;width:274px;max-height:52vh;overflow:auto;
+    padding:0;pointer-events:auto;font-size:12.5px;color:var(--sub);line-height:1.7}
+  #guide .gh{padding:10px 14px;cursor:pointer;color:var(--txt);font-weight:600;font-size:13px;
+    border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--panel);z-index:1}
+  #guide .gh .gcap{font-size:11px;color:var(--sub);font-weight:400}
+  #guide .gbody{padding:10px 14px 14px}
+  #guide.min .gbody{display:none}
+  #guide.min .gh{border-bottom:none}
+  #guide p{margin:6px 0}
+  #guide b{color:var(--txt);font-weight:500}
+  #guide table{border-collapse:collapse;width:100%;margin:4px 0 8px}
+  #guide td{padding:3px 6px;border-bottom:1px solid var(--line);font-size:12px;vertical-align:top}
+  #guide td:first-child{color:var(--txt);white-space:nowrap;width:62px}
+
+  /* toast */
+  #toast{position:absolute;left:50%;top:76px;transform:translateX(-50%);display:flex;
+    flex-direction:column;gap:6px;align-items:center;pointer-events:none}
+  .tst{padding:7px 15px;border-radius:9px;background:rgba(18,23,33,.94);border:1px solid var(--line);
+    font-size:13px;animation:tin .25s ease;box-shadow:0 6px 20px rgba(0,0,0,.4)}
+  .tst.err{border-color:rgba(255,107,107,.5);color:#ffb3b3}
+  .tst.ok{border-color:rgba(74,217,145,.45);color:#b6f2d3}
+  @keyframes tin{from{opacity:0;transform:translateY(-8px)}to{opacity:1;transform:none}}
+
+  #boot{position:fixed;inset:0;z-index:20;display:flex;align-items:center;justify-content:center;
+    flex-direction:column;gap:14px;background:var(--bg);transition:opacity .5s}
+  #boot h1{font-size:22px;font-weight:600;letter-spacing:2px}
+  #boot p{font-size:13px;color:var(--sub)}
+  #boot .go{margin-top:6px;padding:11px 30px;border-radius:11px;background:var(--acc);color:#04121f;
+    font-weight:600;font-size:14px;cursor:pointer;border:none}
+  #boot .go:hover{filter:brightness(1.08)}
+  #boot.hide{opacity:0;pointer-events:none}
+  .fade{transition:opacity .25s}
+  @media (max-width:900px){ #help{display:none} #side{width:190px}
+    #guide{width:min(88vw,300px);top:64px;max-height:44vh;touch-action:pan-y}
+    #toolbar{max-width:94vw}
+    #ctrl{max-width:62vw;flex-wrap:wrap;justify-content:flex-end} }
+</style>
+</head>
+<body>
+<canvas id="scene"></canvas>
+
+<div id="hud">
+  <div id="topbar" class="panel">
+    <div class="stat"><div class="k">资金</div><div class="v" id="s-money">¥0</div></div>
+    <div class="stat"><div class="k">人口</div><div class="v" id="s-pop">0</div></div>
+    <div class="stat"><div class="k">电力</div><div class="v" id="s-power">0<small>/0</small></div></div>
+    <div class="stat"><div class="k">满意度</div><div class="v" id="s-sat">60<small>%</small></div></div>
+    <div class="stat" id="clock"><div class="k">城市时间</div><div class="v" id="s-time">第1天 06:00</div></div>
+  </div>
+
+  <div id="ctrl">
+    <div class="btn mini" id="btn-pause">暂停</div>
+    <div class="btn mini on" data-sp="1">1×</div>
+    <div class="btn mini" data-sp="2">2×</div>
+    <div class="btn mini" data-sp="4">4×</div>
+    <div class="btn mini" id="btn-save">存档</div>
+    <div class="btn mini" id="btn-load">读档</div>
+    <div class="btn mini" id="btn-clear">清屏</div>
+    <div class="btn mini" id="btn-help">玩法</div>
+  </div>
+
+  <div id="side" class="panel">
+    <h3>城市概况</h3>
+    <div class="row"><span>住宅容量</span><b id="i-cap">0</b></div>
+    <div class="row"><span>就业岗位</span><b id="i-job">0</b></div>
+    <div class="row"><span>每小时净收益</span><b id="i-net">¥0</b></div>
+    <div class="bar"><i id="b-sat" style="width:60%;background:var(--good)"></i></div>
+    <div class="row"><span>满意度</span><b id="i-sat">60%</b></div>
+    <div class="bar"><i id="b-pow" style="width:0%;background:var(--warn)"></i></div>
+    <div class="row"><span>电力负荷</span><b id="i-pow">0%</b></div>
+    <div id="taxrow">
+      <div class="row"><span>税率</span><b id="taxv">9%</b></div>
+      <input type="range" id="tax" min="0" max="20" step="1" value="9">
+    </div>
+  </div>
+
+  <div id="guide" class="panel">
+    <div class="gh">玩法说明 <span class="gcap">（点此收起 / 展开）</span></div>
+    <div class="gbody">
+      <p><b>目标：</b>把空地养成有钱、有人、满意度高的城市。</p>
+      <p><b>操作</b></p>
+      <table>
+        <tr><td>左键</td><td>建造（拖动可连铺道路）</td></tr>
+        <tr><td>右键拖</td><td>旋转视角</td></tr>
+        <tr><td>滚轮</td><td>缩放远近</td></tr>
+        <tr><td>中键拖</td><td>平移画面</td></tr>
+        <tr><td>WASD</td><td>平移 · QE 旋转</td></tr>
+        <tr><td>1~6</td><td>选建筑 · X 拆除</td></tr>
+        <tr><td>Esc</td><td>取消选择</td></tr>
+        <tr><td>空格</td><td>暂停 / 继续</td></tr>
+      </table>
+      <p><b>6 种建筑</b></p>
+      <table>
+        <tr><td>1 道路</td><td>骨架，建筑须挨着路才有效</td></tr>
+        <tr><td>2 住宅</td><td>住人，产生人口与容量</td></tr>
+        <tr><td>3 商业</td><td>提供岗位、收税</td></tr>
+        <tr><td>4 工业</td><td>大量岗位，略带污染</td></tr>
+        <tr><td>5 公园</td><td>提升满意度</td></tr>
+        <tr><td>6 电厂</td><td>每座供 400 电</td></tr>
+      </table>
+      <p><b>发育顺序</b></p>
+      <p>修路 → 路边划住宅 → 建电厂通电 → 建商业/工业招人 → 点缀公园提满意度。建筑满足条件会<b>自动长高升级</b>。</p>
+      <p><b>看板</b></p>
+      <p>左上：资金 / 人口 / 电力 / 满意度 / 时间；左下：容量 / 岗位 / 净收益 / 税率；右上：速度 · 存档 · 读档 · 清屏。</p>
+      <p><b>常见卡点</b></p>
+      <p>· 电不够 → 建筑长不动，多盖电厂<br>· 满意度&lt;35% → 人口流失（缺电 / 没公园 / 税太高 / 污染重）<br>· 不赚钱 → 补商业工业让人交税</p>
+    </div>
+  </div>
+
+  <div id="help" class="panel">
+    <div><b>左键</b> 建造 / 拖动连铺道路</div>
+    <div><b>右键拖动</b> 旋转视角</div>
+    <div><b>滚轮</b> 缩放 · <b>中键拖动</b> 平移</div>
+    <div><span class="k">W</span><span class="k">A</span><span class="k">S</span><span class="k">D</span> 平移 · <span class="k">Q</span><span class="k">E</span> 旋转</div>
+    <div><span class="k">1</span>-<span class="k">6</span> 选建筑 · <span class="k">X</span> 拆除</div>
+    <div><span class="k">Esc</span> 取消 · <span class="k">空格</span> 暂停</div>
+  </div>
+
+  <div id="toast"></div>
+  <div id="toolbar" class="panel"></div>
+</div>
+
+<div id="boot">
+  <h1>迷你模拟城市 3D</h1>
+  <p>修路 → 划住宅区 → 通电 → 建商业和工业，看着城市自己长起来</p>
+  <button class="go" id="btn-start">开始建设</button>
+</div>
+
+<script src="vendor/three.min.js"></script>
+<script src="game.js"></script>
+</body>
+</html>
