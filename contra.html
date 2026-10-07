@@ -1,0 +1,2033 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>魂斗罗 · 铁血战区</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;user-select:none;-webkit-user-select:none}
+html,body{width:100%;height:100%;background:#000;overflow:hidden;font-family:"Courier New",monospace}
+/* 安全区四边读成 CSS 变量：JS 侧按「逻辑方向」取用。
+   R90 旋转兜底时 env() 的上下左右会跟着转反，所以由 safePx() 绕过 env 改用固定边距。 */
+:root{
+  --sa-top:env(safe-area-inset-top,0px);
+  --sa-right:env(safe-area-inset-right,0px);
+  --sa-bottom:env(safe-area-inset-bottom,0px);
+  --sa-left:env(safe-area-inset-left,0px);
+}
+/* ---- 全屏 + 横屏 ----
+   wrap 永远是「逻辑横屏尺寸」(LW × LH)。
+   R90（CSS 顺时针转 90°）用于 iOS 等不支持 screen.orientation.lock 的设备：
+   把竖屏画面整个转成横屏观感 —— 玩家把手机向左横倒就看正了。
+   两个坑：
+   1) 居中必须用 rotate 之前的逻辑尺寸算，即 translate(-50%,-50%) 放在 rotate 后面。
+      写反了（先转再转）会因为 translate 百分比按旋转后尺寸算而整体偏出屏幕。
+   2) 触摸坐标要反变换（见 toLocal），否则摇杆方向整体歪 90°。 */
+#wrap{position:fixed;left:50%;top:50%;width:100%;height:100%;
+  transform:translate(-50%,-50%);background:#000;overflow:hidden}
+/* R90 时 readSize() 会把宽高显式设成逻辑横屏尺寸（LW×LH），不用 100% */
+#wrap.r90{transform:translate(-50%,-50%) rotate(90deg)}
+/* 画布尺寸/位置由 layout() 精确计算（内部分辨率 432x243 严格等比），不依赖 object-fit */
+#game{position:absolute;left:0;top:0;image-rendering:pixelated;background:#000;touch-action:none}
+/* ---------- 触屏按键 ---------- */
+.pad{position:absolute;z-index:10;opacity:.78;display:none}
+/* 左半屏 = 方向触摸区（整块透明，屏幕上不出现任何摇杆/按键图形，
+   按下哪哪就是控制原点，滑动判方向） */
+#padL{left:0;top:0;width:50%;height:100%;z-index:9;opacity:1;touch-action:none}
+/* 右半屏 = 触摸射击/跳跃区（整块透明，屏幕上不出现任何按键）。
+   一落下 = 只开始连射（不跳）；按住时手指纵向动一下 = 跳，见 bindTouchRight。 */
+#padR{left:50%;top:0;width:50%;height:100%;z-index:9;opacity:1;touch-action:none}
+.pad .b{position:absolute;display:flex;align-items:center;justify-content:center;
+  background:rgba(255,255,255,.15);border:2px solid rgba(255,255,255,.45);border-radius:12px;
+  color:#fff;font-weight:bold;font-size:22px;text-shadow:0 2px 3px #000;letter-spacing:1px}
+.pad .b.on{background:rgba(255,235,80,.55);border-color:#ffeb50;color:#000}
+.pad .round{border-radius:50%}
+.hid{display:none!important}
+/* 顶部按钮 */
+#topbar{position:absolute;top:0;left:0;right:0;z-index:12;display:flex;justify-content:space-between;padding:0}
+#topbar .tbtn{background:rgba(0,0,0,.45);border:1px solid rgba(255,255,255,.35);color:#fff;
+  padding:5px 12px;border-radius:6px;font-size:13px;letter-spacing:1px}
+/* 右指调节面板 */
+#feelPanel{position:absolute;inset:0;z-index:50;background:rgba(0,0,0,.72);
+  display:flex;align-items:center;justify-content:center}
+#feelPanel .card{width:min(300px,84%);background:rgba(10,10,14,.92);border:2px solid #ffeb50;
+  border-radius:12px;padding:18px 18px 14px;color:#fff;text-align:center;touch-action:none}
+#feelPanel .t{font-size:15px;letter-spacing:3px;color:#ffeb50;font-weight:bold}
+#feelPanel .d{font-size:11px;opacity:.78;line-height:1.7;margin:6px 0 12px}
+#feelPanel .preset{display:flex;gap:6px;justify-content:center;margin-bottom:12px}
+#feelPanel .p{flex:1;padding:6px 0;border:1px solid rgba(255,255,255,.32);border-radius:6px;
+  background:rgba(255,255,255,.06);color:#fff;font-size:12px;cursor:pointer}
+#feelPanel .p.on{background:#ffeb50;color:#000;border-color:#ffeb50;font-weight:bold}
+#feelPanel .val{font-size:13px;margin:4px 0 12px}
+#feelPanel .val b{color:#ffeb50}
+#feelPanel .close{padding:7px 30px;border:1px solid rgba(255,255,255,.4);border-radius:6px;
+  background:rgba(255,255,255,.1);color:#fff;font-size:13px;cursor:pointer;letter-spacing:3px}
+#feelPanel .hid{display:none}
+#rotate{position:absolute;inset:0;z-index:30;background:#000;display:none;align-items:center;
+  justify-content:center;color:#fff;font-size:16px;text-align:center;line-height:2}
+
+/* ---------- 启动页：点一下 = 全屏 + 横屏 + 开始 ---------- */
+#boot{position:absolute;inset:0;z-index:40;background:#000;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;gap:26px;color:#fff;cursor:pointer;
+  -webkit-user-select:none;user-select:none}
+#boot.gone{display:none}
+#bootTitle{font-size:30px;letter-spacing:8px;font-weight:bold;color:#e53935;
+  text-shadow:3px 3px 0 #7f0000,0 0 22px rgba(229,57,53,.6)}
+#bootSub{font-size:13px;opacity:.7;letter-spacing:2px;margin-top:-14px}
+#bootGo{padding:14px 44px;border:2px solid rgba(255,235,80,.9);border-radius:10px;
+  background:rgba(255,235,80,.14);color:#ffeb50;font-size:19px;font-weight:bold;letter-spacing:4px;
+  animation:bob 1.5s ease-in-out infinite}
+@keyframes bob{0%,100%{transform:scale(1);opacity:.92}50%{transform:scale(1.06);opacity:1}}
+#bootTip{font-size:12px;opacity:.55;line-height:1.9;text-align:center;padding:0 24px}
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="game"></canvas>
+
+  <div id="topbar">
+    <div class="tbtn" id="btnSound">♪ 开</div>
+    <div class="tbtn" id="btnFeel">右指调节</div>
+    <div class="tbtn" id="btnPause">Ⅱ 暂停</div>
+  </div>
+
+  <!-- 左半屏：整块透明方向触摸区（按下即定控制原点，滑动判方向）。
+       屏幕上不画摇杆环/摇杆头 —— 见 bindStick。 -->
+  <div class="pad" id="padL"></div>
+  <!-- 右半屏：整块透明触摸区，屏幕上不出现任何按键。
+       一落下 = 只射击（一直按一直打），按下本身不跳；
+       按住时手指纵向动一下（上挑 / 下压） = 跳；第二根手指落下 = 也跳（备用）。
+       都见 bindTouchRight。 -->
+  <div class="pad" id="padR"></div>
+
+  <div id="rotate">请横屏游玩<br><span style="font-size:13px;opacity:.7">（左半屏按住滑动控制方向，往下 = 蹲下；右半屏按住 = 射击，按住时手指上下动一下 = 跳）</span></div>
+
+  <!-- 启动页：点一下 = 全屏 + 横屏 + 直接开局（横屏/全屏必须在用户手势里调） -->
+  <div id="boot">
+    <div id="bootTitle">魂 斗 罗</div>
+    <div id="bootSub">铁 血 战 区</div>
+    <div id="bootGo">▶ 开 始 游 戏</div>
+    <div id="bootTip">点击后自动进入全屏并横屏<br>左半屏滑动 = 方向（往下 = 蹲下）<br>右半屏按住 = 射击（一直按一直打，按下不跳）<br>按住时手指上下动一下 = 跳</div>
+  </div>
+
+  <!-- 右指调节面板：跳跃灵敏度三档预设，点击即生效，localStorage 记忆 -->
+  <div id="feelPanel" class="hid">
+    <div class="card">
+      <div class="t">右指调节 · 跳跃灵敏度</div>
+      <div class="d">值越高 = 越稳（不易误跳，但要拨得更快才触发）；<br>值越低 = 越灵敏（更容易触发跳跃）。</div>
+      <div class="preset">
+        <div class="p" data-v="3.2">灵敏</div>
+        <div class="p on" data-v="4.5">标准</div>
+        <div class="p" data-v="6.5">稳健</div>
+      </div>
+      <div class="val">当前档位 <b id="feelVal">标准</b></div>
+      <div class="close" id="feelClose">关 闭</div>
+    </div>
+  </div>
+</div>
+
+<script>
+"use strict";
+/* =====================================================================
+   魂斗罗 · 铁血战区   —— 单文件 Canvas 像素横版射击
+   键盘：方向键/WASD 移动  K 跳  J 射  L 蹲  P 暂停  M 静音
+   手机：左半屏按住滑动 = 方向（原点随按随定），右下 跳/射/蹲
+   ===================================================================== */
+
+/* ------------------------- 常量 ------------------------- */
+const VW = 432, VH = 243;              // 内部分辨率
+const GRAV = 0.42, GRAV_HOLD = 0.24;   // GRAV_HOLD：按住跳键时的上升重力
+const SP_RUN = 2.35, SP_JUMP = -5.2, SP_MAX = 6.5;
+const WEAPONS = [
+  {name:'N', cd:11, col:'#ffffff'},   // 普通
+  {name:'S', cd:9,  col:'#ffd23f'},   // 散弹
+  {name:'L', cd:7,  col:'#7cf3ff'},   // 激光
+  {name:'B', cd:20, col:'#ff6d00'}    // 爆炸弹：命中即爆，范围伤害
+];
+const PAL = {
+  sky1:'#1b2436', sky2:'#341a38', hill:'#232b3a', hill2:'#141b28',   // 暗夜 + 暗紫天空
+  dirt:'#3a2b2b', dirt2:'#201414', stone:'#43434e', grass:'#5c1f2a', // 暗土 + 血色苔藓
+  white:'#fff', red:'#c62828', blue:'#4a5a8a', yellow:'#ffd23f', grey:'#5a5a5a'
+};
+
+/* ------------------------- 像素精灵 ------------------------- */
+/* 主角 13x16：.透明 K黑 S肤 R衣 Y带 W白 */
+const P_RUN0 = [
+"....KKKKK.....",
+"...KSSSSSK....",
+"...KSWKSSSK...",
+"...KSSSSSSK...",
+"...KRRRRRK....",
+"..KRRRRRRRK...",
+".KSRRRRRRSK...",
+".KSKRRRRKSSK..",
+"..KKRRRRRKK...",
+".....RRRR.....",
+"...Y..RRR..Y..",
+"..RRY.RRR.YR..",
+".RRRR..R..RRR.",
+".RRR....RRR...",
+"..KK....KK....",
+".............."];
+const P_RUN1 = [
+"....KKKKK.....",
+"...KSSSSSK....",
+"...KSWKSSSK...",
+"...KSSSSSSK...",
+"...KRRRRRK....",
+"..KRRRRRRRK...",
+".KSRRRRRRSK...",
+".KSKRRRRKSSK..",
+"..KKRRRRRKK...",
+"...RRRRR......",
+"..R.RRR..Y....",
+".RR.RRR.YRR...",
+".RR..R..RRR...",
+"....R...RRR...",
+"...KK....KK...",
+".............."];
+const P_JUMP = [
+"....KKKKK.....",
+"..KSSSSSSK....",
+"..KSWKSSSSK...",
+"..KSSSSSSSK...",
+"..KRRRRRRK....",
+".KRRRRRRRRK...",
+"KSRRRRRRRRSK..",
+"KSKRRRRRRKSSK.",
+"KKKRRRRRRRKKK.",
+"...RRRRRRR....",
+"..Y.RRRRR.Y...",
+".RRYRRRRRYRR..",
+".RRRRR.RRRRR..",
+"..RRR...RRR...",
+".RRR.....RRR..",
+"..KK.....KK..."];
+const P_DUCK = [
+"................",
+"................",
+"................",
+"................",
+"................",
+"................",
+"....KKKKK......",
+"...KSSSSSSK....",
+"...KRRRRRRRK...",
+"..KRRRRRRRRRK..",
+"..KSRRRRRRRSK..",
+"..KSKRRRRKSSK..",
+"..KKRRRRRRKK...",
+"....YRRRRRY....",
+"...RRRRRRRRR...",
+"................"];
+/* 敌兵 12x14 */
+const E_RUN0 = [
+"...KKKKK....",
+"..KTTTTTK...",
+"..KTWTTSK...",
+"..KTTTTTSK..",
+"..KPPPPPK...",
+".KPPPPPPPK..",
+".KPPPPPPPK..",
+"..KPPPPPK...",
+"...KPPPK....",
+"..G..GG..G..",
+".GG.GG.GG...",
+".GG.GG.GG...",
+"...GG.GG....",
+"...KK.KK...."];
+const E_RUN1 = [
+"...KKKKK....",
+"..KTTTTTK...",
+"..KTWTTSK...",
+"..KTTTTTSK..",
+"..KPPPPPK...",
+".KPPPPPPPK..",
+".KPPPPPPPK..",
+"..KPPPPPK...",
+"..PPPPK.....",
+".G.GG.GG...",
+".G.GGG.G....",
+".G..G..G.G..",
+"..G.G..G....",
+"...KK.KK...."];
+
+/* ------------------------- 画精灵 ------------------------- */
+function drawSprite(sp, x, y, pal, flip, scale){
+  scale = scale||1;
+  const sw = Math.max.apply(null, sp.map(r=>r.length));
+  for(let r=0;r<sp.length;r++){
+    const row = sp[r];
+    for(let c=0;c<row.length;c++){
+      const ch = row[c];
+      if(ch==='.'||ch===' ') continue;
+      const col = pal[ch] || '#fff';
+      const px = flip ? (x + (sw-1-c)*scale) : (x + c*scale);
+      ctx.fillStyle = col;
+      ctx.fillRect(Math.round(px), Math.round(y + r*scale), scale, scale);
+    }
+  }
+}
+const PAL_P = {K:'#101010',S:'#f0b080',W:'#ffffff',R:'#e03b30',Y:'#ffd23f'};
+const PAL_E = {K:'#101010',T:'#e8b8a0',W:'#ffffff',P:'#7a3a9a',G:'#3e7a3e'};   // 敌人配色压暗（病态感）
+
+/* ------------------------- 音频 ------------------------- */
+const Sound = {
+  ac:null, on:true,
+  init(){ if(!this.ac){ try{ this.ac = new (window.AudioContext||window.webkitAudioContext)(); }catch(e){} } },
+  beep(f,dur,type,vol,slide){
+    if(!this.on||!this.ac) return;
+    const ac=this.ac, o=ac.createOscillator(), g=ac.createGain();
+    o.type=type||'square'; o.frequency.setValueAtTime(f, ac.currentTime);
+    if(slide) o.frequency.exponentialRampToValueAtTime(Math.max(40,slide), ac.currentTime+dur);
+    g.gain.setValueAtTime(vol||0.06, ac.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.0001, ac.currentTime+dur);
+    o.connect(g); g.connect(ac.destination); o.start(); o.stop(ac.currentTime+dur);
+  },
+  shoot(){ this.beep(880,0.07,'square',0.045,300); },
+  shootS(){ this.beep(660,0.09,'square',0.05,180); },
+  laser(){ this.beep(1400,0.06,'sawtooth',0.035,600); },
+  jump(){ this.beep(420,0.10,'square',0.04,760); },
+  hit(){ this.beep(200,0.08,'square',0.06,90); },
+  boom(){ this.beep(140,0.30,'sawtooth',0.075,40); },
+  power(){ this.beep(660,0.06,'square',0.05); setTimeout(()=>this.beep(990,0.10,'square',0.05),60); },
+  die(){ this.beep(520,0.5,'sawtooth',0.08,60); }
+};
+
+/* ------------------------- 输入 ------------------------- */
+const K = {};                       // 键盘状态
+const T = {};                       // 触屏状态
+/* 右半屏「主动跳跃」的冲量：触发一下 = 按住跳键 N 帧（见 JUMP_HOLD_FR）。
+   无论触发来自「指肚落下」「按住时纵向动一下」还是「第二根手指」，都走这里。
+   为什么单独开一个计数、不复用 T.jump：
+   T.jump 会被 rightClear()（抬手 / 失焦 / 切后台）清零 —— 而玩家做这些动作，
+   手指往往触发完就顺势离开了屏幕，跳会被当场掐断，只剩个小跳。
+   冲量走独立计数，与手指在不在屏幕上彻底无关：触发一下 = 一次跳满。 */
+const PJ = {frames:0};
+function held(a){
+  return !!(K[a] || T[a] || (a==='jump' && PJ.frames > 0));
+}
+function dirX(){ return (held('right')?1:0) - (held('left')?1:0); }
+function dirY(){ return (held('down')?1:0) - (held('up')?1:0); }
+
+const KEYMAP = {
+  ArrowLeft:'left', KeyA:'left', ArrowRight:'right', KeyD:'right',
+  ArrowUp:'up', KeyW:'up', ArrowDown:'down', KeyS:'down',
+  KeyK:'jump', Space:'jump', KeyZ:'jump',
+  KeyJ:'fire', KeyX:'fire', KeyL:'fire'
+  // 原先还有 KeyC:'run'（独立蹲键）—— 蹲已改用方向键下，删掉
+};
+addEventListener('keydown', e=>{
+  if(KEYMAP[e.code]!==undefined){ K[KEYMAP[e.code]]=true; e.preventDefault(); }
+  // Enter 只负责「开局 / 重开」，不要再调 togglePause —— 否则开局后立刻被暂停，游戏没法玩
+  if(e.code==='Enter'){
+    if(G.state==='title'||G.state==='over'||G.state==='win') startGame();
+    else if(G.state==='pause') togglePause();
+  }
+  if(e.code==='KeyP') togglePause();
+  if(e.code==='KeyM'){ toggleSound(); }
+  if(e.code==='Space') e.preventDefault();
+});
+addEventListener('keyup', e=>{ if(KEYMAP[e.code]!==undefined) K[KEYMAP[e.code]]=false; });
+
+/* ------------------------- 右半屏：单指「按住射击 + 纵向动一下跳」 -------------------------
+   老杨的要求：屏幕上不要出现按键，一根手指搞定开枪和跳。
+
+   行为（v12 定稿，单指）：
+     ① 手指一碰 → **只射击**（T.fire），按住持续连发 —— 按下本身不跳；
+     ①' 按下后的**第一个** touchmove 只用来校正锚点、不作判定（JUMP_GUARD_MOVES）——
+        见下方 v12 说明，这一段是浏览器的「落指坐标跳变」，不是玩家的动作；
+     ② **按住时手指纵向动一下（上挑 / 下压都行）→ 跳满一整跳**（≈56px），枪不停；
+        纵向位移阈值 ≈ 屏幕短边 2.2%（短边 360 时≈8px），上下对称；
+     ③ 第二根手指落下 → 也能跳（备用）；
+     ④ 抬手 → 射击归零。跳本身走独立冲量，抬手掐不断。
+
+   ⚠️ v9 = **整体删掉「位置分区」**（真机反馈「屏幕右上一点就跳」）。
+     那是 v6 引入、v8 保留为「辅助」的分区逻辑：按在右半屏上方 42% 就当帧跳。
+     老杨实际拇指落点在屏幕正中，够不到那条分区线，所以：
+       · 收益 = 0（他从来不会往那么高按）；
+       · 代价 = 误触 —— 打枪时手稍微往上一点，或者随手点在右上角，就白跳一次。
+     ⇒ 结论：**一条通路要么用得上、要么删掉，不要留「可能有用」的辅助路。**
+
+   ⚠️⚠️ v10 = 老杨最后一道坎「指肚抬起来才跳」的真正根因：
+     v4~v9 六版全都在做**位移判定**（上挑），而位移判定有个先天死结 ——
+       **touchstart 那一帧手指还没动，没有任何位移可判**，
+       想跳就只能干等手指移动。
+     而老杨的动作是「按下去（想跳）→ 发现不跳 → 抬手离开」，
+       最后离开前那一段向上位移才凑够阈值 ⇒ 体感永远变成「抬起来才跳」。
+     更糟的是「指肚平贴」这个动作在屏幕坐标上恰恰是**向下移**（接触面朝指根扩），
+       旧代码 `if(y > RT.swipeY) RT.swipeY = y;` 把下移当「重新瞄准」吃掉了，
+       所以他压下去永远不跳，只能靠抬手那一下。
+     ⇒ 修法：**跳跃判定整体搬到 touchstart（按下当帧），彻底不管位移。**
+       位移通路降级为「按住时的连跳补充」，且改上下对称，不再吃掉下移。
+
+   ⚠️ v11 = 真机反馈：「右手手指一按屏幕就发射子弹同时还跳一下，希望就发射就行了，不要跳一下」。
+     ⇒ 把 `JUMP_ON_PRESS` 关掉：**按下只射击，跳跃交回「按住时纵向动一下」。**
+       注意这**不是**退回 v9 —— v9 只认「往上挑」、且锚点会被下移一路拽着走，
+       所以老杨压平指肚永远不跳、只能靠抬手；
+       现在是**双向对称判定 + 锚点锁死在按下点**，
+       他「指肚平贴」这个天然的下压动作本身就能触发跳，且不需要抬手。
+     ⇒ 可调开关就一个常量，想恢复「按下即跳」把 JUMP_ON_PRESS 改回 true 即可。
+
+   ⚠️ v12 = 关掉「按下即跳」后，老杨仍然反馈「首次按下屏幕时除了发射还跳一下」。
+     **真凶不是按下本身，是浏览器的「落指坐标跳变」：**
+       手指啪一下贴到屏幕上时，浏览器上报的接触点会**从指尖挪到指肚中心**，
+       这一挪本身就产生一个纵向位移（实测 8~14px），已经越过 8.58px 阈值
+       ⇒ 落下当帧就补齐一个 touchmove，被当成「指肚落下」判成跳。
+     实测证据（模拟 iPhone 390×844，R90）：
+       · 纯按下无 move            → pj=0    不跳 ✅
+       · 按下后立刻 move 12px     → pj=25   跳 ❌ ← 就是这一下
+       · 按下后立刻 move  8px     → 跳     ❌
+       · 按下后立刻 move  4px     → 不跳   ✅
+       · 按下后隔 60ms 再 move 12px → 跳   ✅ ← 玩家真正「让指肚落下」的动作
+     ⇒ 修法：**加落指保护 `JUMP_GUARD_MOVES = 1`** ——
+       按下后的**第一个** touchmove 只用来校正锚点（吸收掉落指跳变），不作判定，
+       之后的 move 才从「手指落稳的位置」开始算。
+       ⚠️ 先用毫秒做过一版（40ms），真机不稳：落指跳变的持续时间跟设备上报频率挂钩，
+          模拟环境里两次事件间隔就能超 40ms，保护形同虚设。
+          改成「次数」口径后与设备无关，稳定生效。
+
+   ⚠️ 真机返工记（别再走回头路）：
+     v1：面积绝对阈值 → 「一按就跳一下」；
+     v2：面积相对阈值 + 保持 6 帧 → 「跳不起来」；
+     v3：两指法 → 可靠，但违背「一根手指」；
+     v4：单指上挑 25px → 「慢半拍、像抬起来才跳」；
+     v5：面积路零保持 + 上挑砍到 13px 兜底 → 仍然「抬起来才跳」，但**能用**；
+     v6：位置分区(42%) + 上挑 13px 兜底 → 老杨：「能用，抬起来才跳是个小问题」；
+     v7：**删掉上挑**、只剩位置分区(35%) → 老杨：「基本不灵」← 反面教材，别再删上挑；
+     v8：**恢复上挑为主通路**（阈值 10px），位置分区(42%) 降为辅助；
+     v9：**分区整体删除** → 老杨：「屏幕右上一点就跳」= 那条辅助路的误触；
+     v10：**跳跃搬到 touchstart 当帧** → 老杨：「指肚一落下就触发」，成了；
+          ⇒ 教训：**玩家说「一接触就让我做某事」，判定就必须放在 touchstart。**
+     v11：按下即跳**又射又跳** → 老杨：「希望只发射就行，不要跳」= 关掉 JUMP_ON_PRESS。
+          ⇒ 教训总纲：**「按下」这个动作在同一个区域只能有一个主语义。**
+            右半屏的按下语义是「射击」，跳就必须另找一个触发方式（这里是纵向位移）。
+     v12：关掉按下即跳后**按下仍跳一下** = 浏览器落指时的接触点跳变（见上）。
+          ⇒ 教训：**touchstart 的坐标不是「手指最终落点」，是「指尖刚碰到的那一点」。**
+            任何基于位移的手势，都必须先把落指这一小段挪动滤掉（v12 的 40ms 保护期），
+            否则玩家会觉得自己「什么都没动」，角色却反应了。 */
+const JUMP_ON_PRESS = false;   // ★【按下即跳】v11 关闭：老杨要「按下只发射，不要跳一下」。
+                               // 想恢复成 v10 的「一落下就跳」，改成 true 即可（只影响这一处）。
+const JUMP_GUARD_MOVES = 1;    // ★【落指保护】按下后前 N 次 touchmove 只校正锚点、不判定。
+                               // 浏览器在手指落到屏幕上时，上报的接触点会从指尖挪到指肚中心，
+                               // 这一挪就产生 8~14px 的「凭空位移」（实测已超阈值），
+                               // 不滤掉就是老杨说的「一按就跳一下」。
+                               // 用「次数」而不是毫秒：它跟设备上报频率挂钩，比时间口径稳。
+const JUMP_SWIPE_VEL = 4.5;    // 【默认手感】触发跳跃的竖直速度阈值（60fps 下 px/帧）。
+                               // 快拨（上挑/下压的起步 ≈10~30px/帧）远超它 → 跳；
+                               // 普通握持微动 / 重新瞄准（≤3px/帧）远低于它 → 不误跳。
+                               // 用速度而非位移：手机平板一致、位移多小都灵敏触发，
+                               // 但慢速漂移再远也不会误触 —— 灵敏度和防误触同时满足。
+                               // ★ 玩家可在「右指调节」面板三档切换，并记忆到 localStorage；
+                               //   实际生效读 FEEL.jumpVel（见 padSwipe），此常量仅作默认值。
+const FEEL = { jumpVel: JUMP_SWIPE_VEL };   // 玩家可调手感（当前仅跳跃灵敏度）
+try{ const _v = parseFloat(localStorage.getItem('contra_feel_jumpVel')||''); if(!isNaN(_v)) FEEL.jumpVel = Math.min(8, Math.max(3, _v)); }catch(e){}
+const JUMP_COOLDOWN_MS = 160;  // 跳完的冷却时长：持续快拨/抖手时不会一路连跳；跳一次后需短暂停顿才能再跳
+const JUMP_HOLD_FR  = 26;      // 跳一下 = 走满整个上升段（5.2/0.24≈22 帧，留点余量）
+                               // 于是不管按下多轻、抬手多快，永远是跳满高度（约 56px）。
+const TWO_FINGER_JUMP = true;  // 「第二根手指 = 跳」常开（备用通路）
+
+// 右半屏触摸状态（放模块层：失焦 / 切后台时要从外面清掉，否则会卡住不再响应）
+//   j2          当前搭着当「跳」用的第二根手指 id（备用通路；不影响第一根手指持续射击）
+//   swipeY      锚点 = **按下点**的纵向坐标，整次按压固定不动（v10 起不再跟随下移）。
+//               手指纵向离它 pinch 阈值以上就算跳，往上往下对称。
+//   swipeArm    是否处于「可触发」状态。跳一次就落闸，回拉够远才重新预备 ——
+//               否则按住时手指上下抖一下就会一路连跳。
+//   swipeJumpY  上一次触发的 y，用来量「回拉了多少」
+//   guard       落指保护剩余次数。>0 时接下来的 move 只校正锚点、不判定（见 JUMP_GUARD_MOVES）。
+//   （跳跃的保持帧不在这里，走独立的 PJ，见 held()）
+const RT = {pid:null, j2:null,
+            lastY:0, lastT:null, coolT:0, guard:0};
+
+function rightClear(){
+  RT.pid = null; RT.j2 = null;
+  RT.lastY = 0; RT.lastT = null; RT.coolT = -1e9; RT.guard = 0;   // coolT 初始为极负值：按下后第一跳不被冷却误拦
+  T.fire = false; T.jump = false;
+}
+
+/* ------------------------- 【跳跃通路】按住时快速纵拨一下 = 跳 -------------------------
+   速度判定：记下上一帧的 y 与时间，算竖直速度（归一化到 60fps 的 px/帧）。
+   只认「快」——上挑或下压的起步速度达到阈值就跳；慢速移动（重新瞄准、换握、
+   指肚慢慢压平）永远低于阈值，绝不误跳。
+   为什么用速度：旧版用「离按下点的位移」做阈值，两个问题——① 大屏(平板)短边长，
+   阈值被放大到 17px+，拨少了跳不起来(不灵敏)；② 手指慢慢漂移累计够距离也会误跳。
+   速度把「拨得快不快」和「移得远不远」解耦：快而短的拨最灵敏，慢而长的漂移最安全。
+   跳不写 T.jump，而是给 PJ.frames 一个冲量（见 held()），按完手指顺势离屏也掐不断它。 */
+function padSwipe(y, now){
+  // ★ 落指保护：按下后前 N 次 move 只吸锚点（接触点从指尖挪到指肚的凭空位移被吃掉），
+  //   不判速度。见 JUMP_GUARD_MOVES。
+  if(RT.guard > 0){ RT.guard--; RT.lastY = y; RT.lastT = now; return; }
+  if(RT.lastT === null){ RT.lastT = now; RT.lastY = y; return; }
+  const dt = Math.max(1, now - RT.lastT);
+  const vy = (y - RT.lastY) * (1000 / 16.667) / dt;   // 归一化到「60fps 的 px/帧」
+  RT.lastY = y; RT.lastT = now;
+  if(now - RT.coolT < JUMP_COOLDOWN_MS) return;        // 冷却：防止持续快拨一路连跳
+  if(Math.abs(vy) >= FEEL.jumpVel){                  // 起步够快（上挑/下压）→ 跳（阈值玩家可调）
+    PJ.frames = JUMP_HOLD_FR;
+    RT.coolT = now;
+  }
+}
+
+function bindTouchRight(zone){
+  function down(t){
+    if(RT.pid !== null){
+      // 已经有一根手指在按（= 正在射击）：第二根手指落下 = 跳
+      // 第二根手指跳是独立通路：第一根手指按着射击时，第二根要能反复搭上来跳
+      // （v16 的兜底在 document 捕获阶段：残留的射击手指会被 syncTouchLive 当场清掉，
+      //   所以能走到这里，说明第一根手指确实还在屏幕上，放心当第二根用。）
+      if(RT.j2 === null){ RT.j2 = t.id; T.jump = true; }
+      return;
+    }
+    if(G.state==='title'||G.state==='over'||G.state==='win'){ startGame(); return; }
+    if(G.state==='pause'){ togglePause(); return; }
+    Sound.init();
+    RT.pid = t.id;
+    RT.lastY = t.p.y; RT.lastT = performance.now(); RT.coolT = -1e9;   // 连跳速度锚点 = 落点；冷却初始为极负，第一跳不被拦
+    RT.guard = JUMP_GUARD_MOVES;                    // ★ 起算落指保护（见 JUMP_GUARD_MOVES）
+    T.fire = true;                                  // ① 一接触就射击，按住连续连发
+    // ①' 【可选】按下即跳。v11 默认关闭 —— 老杨真机反馈「一按就射还跳一下，
+    //    我只想射」。右半屏按下的主语义定成「射击」，跳改由纵向位移触发（见 move）。
+    if(JUMP_ON_PRESS) PJ.frames = JUMP_HOLD_FR;
+  }
+  function move(t){
+    if(RT.pid === null || t.id !== RT.pid) return;
+    padSwipe(t.p.y, performance.now());             // ② 跳跃通路：按住时快速纵拨（上挑/下压）= 跳
+  }
+  function up(t){
+    // 第二根手指抬起：只把「跳」放掉，射击手指还按着，枪不能停 ——
+    // 放掉才能让下一次第二根手指落下重新形成「没按→按下」的边沿，不然只能跳一次。
+    if(t && RT.j2 !== null && t.id === RT.j2){ RT.j2 = null; T.jump = false; return; }
+    if(RT.pid === null || (t && t.id !== RT.pid)) return;
+    // ⑤ 抬手只归零。跳本身走 PJ 冲量，抬手（或按完顺势离屏）掐不断它。
+    //    v10 起跳跃的判定全在 touchstart 当帧，抬手与「跳不跳」再无关系 ——
+    //    这就是老杨要的「指肚一落下就跳」。
+    rightClear();
+  }
+  // 触摸事件优先（旋转兜底所需的坐标信息走它）；拿不到就退回 pointer。
+  if('ontouchstart' in window){
+    // p = 视口坐标（R90 旋转兜底下 clientX/Y 是竖屏坐标，不换算纵向位移会判反）
+    const w = t=>({id:t.identifier, p:toLocal(t.clientX, t.clientY)});
+    zone.addEventListener('touchstart', e=>{ e.preventDefault();
+      // 残留的射击手指已在 document 捕获阶段被 syncTouchLive 清掉了（不在就当场清），
+      // 到这里直接接管即可，不会被误判成「第二根手指」而白跳一次。
+      for(const t of e.changedTouches) down(w(t)); }, {passive:false});
+    zone.addEventListener('touchmove', e=>{ e.preventDefault();
+      for(const t of e.changedTouches) move(w(t)); }, {passive:false});
+    const end = e=>{ e.preventDefault(); for(const t of e.changedTouches) up(w(t)); };
+    zone.addEventListener('touchend', end, {passive:false});
+    zone.addEventListener('touchcancel', end, {passive:false});
+  } else {
+    const w = e=>({id:e.pointerId, p:toLocal(e.clientX, e.clientY)});
+    zone.addEventListener('pointerdown', e=>{ e.preventDefault();
+      try{ zone.setPointerCapture(e.pointerId); }catch(_){}   // 同上，抛了会中断整个处理
+      down(w(e)); });
+    zone.addEventListener('pointermove', e=>{ if(e.buttons) move(w(e)); });
+    zone.addEventListener('pointerup', e=>{ e.preventDefault(); up(w(e)); });
+    zone.addEventListener('pointercancel', e=>{ e.preventDefault(); up(w(e)); });
+    zone.addEventListener('lostpointercapture', ()=>{ if(RT.pid!==null) up(null); });
+  }
+  zone.addEventListener('contextmenu', e=>e.preventDefault());
+}
+bindTouchRight(document.getElementById('padR'));
+
+/* ------------------------- 触摸存活表（全量快照，v16） -------------------------
+   【为什么需要它】
+   摇杆和射击都是「有状态」的：按下置位、抬手清位。但移动端有一类事件是「有去无回」：
+   touchcancel —— 浏览器把这根手指接管成系统手势（全面屏侧滑返回、底部上滑、
+   下拉通知栏、双指被识别成缩放…）之后，它**不再产生任何事件**，连 touchend 都没有。
+   一旦丢，St.on / RT.pid 就永远举着牌子：
+     · 方向锁死在最后一次的值 → 人物一直朝前走、推杆没反应；
+     · 新手指按下还会被 `if(St.on) return` 挡在门外 → 彻底锁死，只能刷新页面。
+
+   【v14 为什么没治好 —— 教训（重要）】
+   v14 用的是「增量计数 + e.target 路由」：
+     document.addEventListener('touchend', e=>{ const box = pick(e.target); if(box) box.n--; }, true)
+   这条路有个致命前提：**事件的 target 必须落在 padL/padR 里**。
+   可 touchcancel（以及个别浏览器上的 touchend）的 target 并不保证是 touchstart 的那个元素 ——
+   系统手势接管时可能报到 body/document 上。pick() 一返回 null，这次就减不掉：
+   计数虚高 → 每帧的「本半屏还有没有手指」判断永远为真 → **兜底自己失效了**。
+   这就是「偶尔还是卡死」的死因。（增量计数还会因重复/丢失的加减永久漂移，
+   它本来就不适合表达「谁还在屏幕上」这个事实。）
+
+   【v16 的正解：全量快照 + 当场校正】
+   任意一次触摸事件里，`e.touches` 都是「事件之后仍然在屏幕上的**所有**触点」——
+   这是个与 target 无关、且**幂等**的事实源。每次事件直接用它重建 LIVE 集合
+   （不是加减，是覆盖），再**当场**校正两个半屏：记着的手指不在 LIVE 里 → 立刻清位。
+   于是：不管事件从哪来、target 是谁、加减会不会漏，状态最多错到下一次触摸事件为止。 */
+const LIVE = new Set();              // 当前屏幕上所有触点的 identifier（全量覆盖，非增量）
+const leftStarters = new Set();      // 曾在「左半区」按下过的手指 id —— 只有这些手指才有资格当摇杆，
+                                     // 排除漂移到左区的右手手指抢走摇杆控制权
+
+// 用一次触摸事件的 e.touches 重建存活表，并当场校正左右半屏。
+// 写成函数声明是为了提前可用：它被下面的 IIFE 引用，而 St / stickClear 定义在文件更后面，
+// 靠「函数提升 + 只在事件回调里运行时访问」保证顺序安全。
+function syncTouchLive(e){
+  LIVE.clear();
+  for(const t of e.touches) LIVE.add(t.identifier);
+  // 同步校正（不等下一帧）：牌子举着、人却不在屏幕上了 → 立即清位。
+  // 必须在本事件内做完 —— 否则新手指落下时会被挡在门外，要一直等到下一次 pollPad 才恢复。
+  if(St.on && !LIVE.has(St.pid)) stickClear();
+  if(RT.pid !== null && !LIVE.has(RT.pid)) rightClear();
+}
+
+(function touchCounter(){
+  // 四个触摸事件全挂（document 捕获阶段，与业务 handler 完全解耦）。
+  // touchmove 也要挂：它最频繁，等于给存活表一个「持续的心跳校准」。
+  for(const ty of ['touchstart','touchmove','touchend','touchcancel'])
+    document.addEventListener(ty, syncTouchLive, true);
+  // iOS 专有手势事件：双指时 Safari 会拿它做缩放。全部吞掉，
+  // 免得一次双指被识别成 pinch-zoom，进而把这几个触点 cancel 掉。
+  for(const ty of ['gesturestart','gesturechange','gestureend'])
+    document.addEventListener(ty, e=>e.preventDefault(), {passive:false});
+})();
+
+/* 每帧做两件事：
+   ① 把「跳一下」的冲量往前走一格（走完 held('jump') 才会放掉，下一次按才有新边沿）；
+   ② 兜底再校验一次存活表（见上方 LIVE / syncTouchLive）。
+   注意：这里引用到的 St / RT / stickClear / rightClear 都定义在后面，
+   但 pollPad 只在主循环里调用，那时它们早已初始化完毕。 */
+function pollPad(){
+  if(PJ.frames > 0) PJ.frames--;
+  if(St.on && !LIVE.has(St.pid)) stickClear();
+  if(RT.pid !== null && !LIVE.has(RT.pid)) rightClear();
+}
+
+/* ------------------------- 全屏 + 横屏 -------------------------
+   老杨要求：一进去就横屏 + 全屏，别让他自己转手机。
+   两条路，能用哪条用哪条：
+   ① 原生锁：screen.orientation.lock('landscape') —— Android Chrome/桌面支持，
+      真正把系统方向锁住，状态栏也跟着横过来，体验最干净。
+      必须先 requestFullscreen，且必须在用户手势里调（浏览器硬性要求）。
+   ② CSS 旋转兜底：iOS Safari 不支持 orientation.lock，就用 rotate(90deg)
+      把竖屏画面整个转成横屏观感 —— 玩家把手机向左横倒就看正了。
+      代价：触摸坐标要反变换，摇杆才不会整体歪 90°（见 toLocal）。
+   R90 开启时 wrap 用逻辑横屏尺寸，viewport 仍是竖屏，所以要单独算布局。 */
+const R90 = {on:false};                 // CSS 旋转兜底是否启用
+let LW = 0, LH = 0;                     // 逻辑（横屏）视口尺寸
+const wrapEl = document.getElementById('wrap');
+
+function readSize(){
+  const W = innerWidth, H = innerHeight;
+  // R90：竖屏(高>宽)时启用；转 90° 后逻辑宽高互换。
+  // wrap 的 CSS 宽高必须显式设成逻辑尺寸 —— 不能用 100%，
+  // 100% 取的是视口尺寸（竖屏 390×844），与 rotate 后的视觉盒子对不上，
+  // 结果整个画面会偏出屏幕左边缘（padL 视觉 x 变成负数）。
+  if(W < H){ R90.on = true; LW = H; LH = W; }
+  else      { R90.on = false; LW = W; LH = H; }
+  wrapEl.classList.toggle('r90', R90.on);
+  wrapEl.style.width  = LW + 'px';
+  wrapEl.style.height = LH + 'px';
+}
+
+// 屏幕坐标 → 逻辑（横屏）坐标。R90 下必须换算，否则方向整体转 90°。
+// wrap 顺时针转 90° 后，逻辑左上角 → 屏幕右上角，逻辑右下角 → 屏幕左下角：
+//   屏幕 x = iw - ly,  屏幕 y = lx
+// 反解：ly = iw - sx,  lx = sy。wrap 与视口同宽高（readSize 里已对齐），无需再补偏移。
+function toLocal(cx, cy){
+  if(!R90.on) return {x:cx, y:cy};
+  return { x: cy, y: (innerWidth - cx) };
+}
+
+function goFullscreen(){
+  const el = document.documentElement;
+  const req = el.requestFullscreen || el.webkitRequestFullscreen || el.webkitRequestFullScreen;
+  if(!req) return Promise.resolve(false);
+  return new Promise(res=>{
+    try{ const r = req.call(el); if(r&&r.then) r.then(()=>res(true)).catch(()=>res(false)); else res(true); }
+    catch(e){ res(false); }
+  });
+}
+function lockLandscape(){
+  const so = screen.orientation;
+  if(!so || !so.lock) return Promise.resolve(false);
+  return new Promise(res=>{ try{ so.lock('landscape').then(()=>res(true)).catch(()=>res(false)); }catch(e){ res(false); } });
+}
+
+// 启动：全屏 → 锁横屏 → 失败则走 CSS 旋转 → 布局 → 开局
+let booting = false;
+async function bootGame(){
+  if(booting) return;          // await 期间用户可能连点，锁住只跑一次
+  booting = true;
+  Sound.init();
+  await goFullscreen();
+  await lockLandscape();                 // iOS 上必然失败，交给 R90
+  readSize(); layout();
+  const b = document.getElementById('boot');
+  if(b) b.classList.add('gone');
+  startGame();
+}
+
+/* ---- 布局：桌面不显示虚拟按键；触屏把按键放到画面两侧留白里，避免遮挡 ----
+   isTouch 判定：光看 maxTouchPoints 不够 —— 无头浏览器/部分桌面环境会报 >0，
+   会误显示虚拟按键并挡住画面。加 coarse 指针（手指/触屏）作为主判据。
+   注意这几个必须放模块层：bootGame() 要调 layout()，写在 init() 里取不到。 */
+const rotEl    = document.getElementById('rotate');
+const padLEl   = document.getElementById('padL');
+const padREl   = document.getElementById('padR');
+const topbarEl = document.getElementById('topbar');
+const bootEl   = document.getElementById('boot');
+const isTouch = matchMedia('(pointer:coarse)').matches
+             || (('ontouchstart' in window) && matchMedia('(any-pointer:coarse)').matches);
+
+// 安全区取值：R90 旋转兜底时固定留边（env 在旋转下方向反了），否则读 env
+function safePx(side){
+  if(R90.on) return (side==='left'||side==='bottom') ? 8 : 0;
+  const v = getComputedStyle(document.documentElement).getPropertyValue('--sa-'+side);
+  return parseFloat(v) || 0;
+}
+function layout(){
+  readSize();                                  // 决定 R90 与逻辑尺寸 LW×LH
+  const W = LW, H = LH;
+  // 竖屏提示：R90 兜底已把画面转成横屏了，此时不该再弹「请横屏」
+  const rotOn = isTouch && !R90.on && W < H;
+  rotEl.style.display = rotOn ? 'flex' : 'none';
+  padLEl.style.display = (isTouch && !rotOn) ? 'block' : 'none';
+  padREl.style.display = (isTouch && !rotOn) ? 'block' : 'none';
+
+  // 触屏下左右半屏都是整块透明触摸区（方向 / 射击跳跃），不再需要底部按键带，
+  // 画面直接铺满全高。顶部按钮浮在画面上（只压天空，不影响操作）。
+  const availH = Math.max(120, H);
+  const scale = Math.min(W / VW, availH / VH);   // 严格等比，不拉伸
+  const dw = Math.floor(VW * scale), dh = Math.floor(VH * scale);
+  cv.style.width = dw + 'px';
+  cv.style.height = dh + 'px';
+  cv.style.left = Math.floor((W - dw) / 2) + 'px';
+  cv.style.top  = Math.floor((availH - dh) / 2) + 'px';
+
+  // 安全区按逻辑方向布置：R90 下 env() 的上下左右会跟着旋转反掉，由 safePx 兜住
+  topbarEl.style.padding = (safePx('top')+6)+'px '+(safePx('right')+10)+'px 0 '+(safePx('left')+10)+'px';
+}
+addEventListener('resize', layout);
+addEventListener('orientationchange', ()=>setTimeout(layout,120));  // iOS 上事件早于尺寸更新
+addEventListener('fullscreenchange', layout);
+
+/* ------------------------- 右指调节面板 ------------------------- */
+const feelEl    = document.getElementById('feelPanel');
+const feelVal   = document.getElementById('feelVal');
+const feelBtns  = Array.prototype.slice.call(document.querySelectorAll('#feelPanel .p'));
+const FEEL_PRESETS = { 3.2:'灵敏', 4.5:'标准', 6.5:'稳健' };   // 档位值 → 名称
+let feelResume  = false;                 // 打开面板前是否在 play，关闭后据此恢复
+function syncFeelUI(){
+  const v = FEEL.jumpVel;
+  feelVal.textContent = FEEL_PRESETS[v] || ('档'+v.toFixed(1));
+  feelBtns.forEach(b=>b.classList.toggle('on', Math.abs(parseFloat(b.dataset.v)-v) < 0.01));
+}
+function openFeel(){
+  feelResume = (G.state==='play');
+  if(feelResume) togglePause();          // 打开面板自动暂停，避免调节时被怪打死
+  syncFeelUI();
+  feelEl.classList.remove('hid');
+}
+function closeFeel(){
+  feelEl.classList.add('hid');
+  if(feelResume){ feelResume=false; togglePause(); }   // 关闭后恢复游玩
+}
+document.getElementById('btnFeel').addEventListener('click', ()=>{ Sound.init(); openFeel(); });
+feelBtns.forEach(b=>b.addEventListener('click', ()=>{
+  FEEL.jumpVel = parseFloat(b.dataset.v);
+  try{ localStorage.setItem('contra_feel_jumpVel', String(FEEL.jumpVel)); }catch(e){}
+  syncFeelUI();
+}));
+document.getElementById('feelClose').addEventListener('click', ()=>{ closeFeel(); });
+
+/* ------------------------- 浮动摇杆（左半屏，不可见） -------------------------
+   ★ v19：屏幕上不再画摇杆环 / 摇杆头。
+     老杨：「不要显示方向控制摇杆了，能控制方向就行了，这样会更简洁」。
+     判定逻辑一字未动 —— 仍是「按下定原点、按位移量分 8 扇区出方向」，
+     只把 ringEl / knobEl 两个视觉元素连同 stickPaint() 一并删掉，
+     左半屏变成纯透明触摸区（与右半屏一致），画面上不出现任何控件。
+     ⚠️ St.on / St.pid 这套状态与视觉无关，删绘制不影响任何自愈逻辑。
+
+   需求：手指按下左半屏任意位置 → 该点成为「控制原点」；
+        滑动时按「相对原点的位移」判定 8 方向；
+        手指离开屏幕 → 本次控制结束，方向归零；
+        下次再按下 → 重新取原点（不沿用上次的）。
+   实现要点：
+   - 只认第一根手指（pid），后续触点忽略，避免右手/多指误改方向；
+   - 位移 < DEAD_ZONE 视为没动，防止按住时手抖导致方向乱跳；
+   - 方向用 atan2 分 8 扇区判定，斜向也有明确的两个轴分量；
+   - 写 T.left/right/up/down，因此 dirX()/dirY() 与键盘逻辑完全复用。
+
+   ⚠️ v13 = 「右手按住射击 + 左手推摇杆 → 摇杆卡死」的修复：
+     老杨真机反馈：右手指一直按着右半屏开枪时，左手去推左半屏摇杆推不动，
+     方向锁死在原处。
+     根因：**两个半边用了不一样的事件族** ——
+       右半屏（射击/跳）挂的是 touch 事件，真机上一直灵敏；
+       左半屏（摇杆）只挂 pointer 事件，在手机上多指场景下会丢
+       （pointermove 不再送达 / 被 pointercancel 打断），摇杆就死了。
+     （无头 Chrome 复现不出来：横屏、竖屏 R90 两种视口下事件计数都完全正常，
+       说明是特定真机浏览器对「多指 + pointer」的处理差异。）
+     ⇒ 修法：**摇杆也改成触摸设备优先走 touch 事件**（`'ontouchstart' in window`），
+       与右半屏完全对齐；pointer 只留给非触屏环境兜底。
+       两端同一事件族，多指语义一致，互不干扰。
+     ⇒ 附带加固：pointer 兜底分支里的 lostpointercapture 原先「只要摇杆在控就清空」，
+       任何指针的捕获丢失都会误伤摇杆；现在收窄为「丢的正是当前控制手指」才清。
+
+   ⚠️ v14 = 「偶尔还是会锁死」的第一次收尾（**没治好**）：
+     v13 统一事件族之后，老杨反馈「偶尔还是会出现方向键锁死」。
+     ⇒ 不是事件族的问题了，是**有状态设计本身的漏洞**：
+       摇杆靠「按下置位 / 抬手清位」维持 St.on，可移动端有一类「有去无回」的事件 ——
+       touchcancel（浏览器把这根手指接管成系统手势：全面屏侧滑返回、底部上滑、
+       下拉通知栏…）之后它**不再产生任何事件**，连 touchend 都没有；touchend 本身也可能丢。
+       一旦丢，St.on 就永远举着牌子：方向锁死在最后一次的值，
+       新手指按下还会被 `if(St.on) return` 挡掉 → 锁死到刷新页面。
+     ⇒ v14 的修法：加「存活**计数** + e.target 路由」自愈。**方向对了，实现有坑** ——
+       计数只在该事件的 target 落在 padL/padR 里时才加减，而 touchcancel 的 target
+       在部分浏览器里会报到 body/document → 减不掉 → 计数虚高 → 兜底永远不触发。
+       （详见文件上方 LIVE / syncTouchLive 的完整说明。）
+
+   ⚠️ v16 = 换成「全量快照 + 当场校正」（**正解**）：
+     不再用「谁减了谁没减」的计数，直接用每次触摸事件的 `e.touches`（全量、幂等、
+     与 target 无关）重建存活表 LIVE，并在**同一个事件里**就把两个半屏校正掉。
+     再叠两道：触摸事件全挂 document 捕获（含高频的 touchmove 当心跳）、
+     pollPad 每帧兜底校验、padL 的 touchmove 里发现「本区有手指在动却没在控」就重新接管。
+     合计四道，且都只依赖「手指现在在不在屏幕上」这一个事实。
+
+   ❌ v17 / v18 已整体回退（老杨：「退回到第 16 版吧」）——**别再往这条路上走**。
+     那两版想在 v16 之上再加一套「顶替」策略（本区只剩自己一根手指时，就抢过控制权）：
+       v17：加 padSolo() 当场数触点 + resize / orientationchange 直接复位 + 无条件清位；
+       v18：把数触点从 elementFromPoint 换成几何判定，resize 复位收窄成「只有 R90 开关翻转才复位」。
+     ⇒ 结论：**方向是错的，整体撤掉。** 两条硬教训：
+       ① v17 把「复位」挂到了 resize / orientationchange 上，而**真机的 resize 极其频繁**
+          （地址栏显隐、全屏切换、软键盘、iOS 视口抖动）—— 每来一次就把摇杆和射击清一遍，
+          玩家推着杆却一直被清掉，真机表现「完全无法控制」。
+          **铁律：复位动作只能挂在「稀有且语义明确」的事件上；挂到高频事件上 = 直接把功能废掉。**
+       ② 「顶替」整套判据都依赖「当场数出来的触点个数」这个中间量，数错（或多算一个幽灵点）
+          就会在正常操作时抢走控制权 —— **改坏的风险远大于它能修的那点「极偶尔」。**
+     现在就是 v16：只保留「全量快照 + 当场校正 + 每帧校验 + 移动接管」四道，
+     判据全部只依赖 `e.touches`（手指现在在不在屏幕上），不引入任何会抢控制权的新规则。 */
+const DEAD_ZONE = 14;            // 死区半径（px），小于此位移视为无方向
+const St = {on:false, pid:-1, ox:0, oy:0, dx:0, dy:0};
+
+function stickClear(){
+  St.on = false; St.pid = -1;
+  T.left = T.right = T.up = T.down = false;
+}
+function stickApply(dx, dy){
+  // 按 8 扇区判定方向：左上/上/右上/左/无/右/左下/下/右下
+  const d = Math.hypot(dx, dy);
+  if(d < DEAD_ZONE){ T.left = T.right = T.up = T.down = false; St.dx = dx; St.dy = dy; return; }
+  // 按 8 扇区判定方向（每扇区 67.5° 宽，边界在 22.5°/67.5°）：
+  // |cos|>0.9239 → 纯水平；|sin|>0.9239 → 纯垂直；两者都不满足 → 斜向
+  // （0.9239²≈0.854<1，所以两个条件天然互斥，不会同时成立）
+  const a = Math.atan2(dy, dx);
+  const c = Math.cos(a), s = Math.sin(a);
+  const ah = Math.abs(c) > 0.9238795;    // cos(22.5°)
+  const av = Math.abs(s) > 0.9238795;
+  if(ah && !av){ T.left = c < 0; T.right = c > 0; T.up = false; T.down = false; }
+  else if(av && !ah){ T.up = s < 0; T.down = s > 0; T.left = false; T.right = false; }
+  else if(!ah && !av){ T.up = s < 0; T.down = s > 0; T.left = c < 0; T.right = c > 0; }
+  else { T.left = T.right = T.up = T.down = false; }   // 恰在边界上（浮点可能），清空
+  St.dx = dx; St.dy = dy;
+}
+function bindStick(zone){
+  // 与下面选事件族用的是同一个判据，这里单独存一份给 down() 用
+  const IS_TOUCH = 'ontouchstart' in window;
+  // 三个动作与事件族解耦：touch / pointer 两种入口都喂给同一套状态机
+  // v16 的守卫：只有在控的那根手指**真的还在屏幕上**时才忽略后续触点。
+  //   过去是光看 `St.on` 就 return —— 一旦某根手指被系统静默 cancel（牌子没摘），
+  //   后来所有手指都会被这句挡在门外。现在用存活表核实，牌子是假的就直接接管。
+  //   非触屏（pointer 兜底）下 LIVE 恒为空，保持原来的「只认第一根手指」。
+  const down = (id, p)=>{
+    // 标题/结束画面点左半屏 = 开始游戏（画布 pointerdown 被本区遮住，这里补一份）
+    if(G.state==='title'||G.state==='over'||G.state==='win'){ startGame(); return; }
+    if(G.state==='pause'){ togglePause(); return; }
+    // ★ 同 id 再次按下（系统静默回收了旧手指、又复用了同一个 identifier）：
+    //   必须当场刷新锚点，否则方向会用「旧手指的起点」推算，一偏就锁死朝前、
+    //   而且新手指还会被下面的守卫挡在门外。这里刷新锚点后立即 return。
+    if(St.on && id === St.pid){
+      St.ox = p.x; St.oy = p.y; St.dx = 0; St.dy = 0;
+      T.left = T.right = T.up = T.down = false;
+      return;
+    }
+    if(St.on && (!IS_TOUCH || LIVE.has(St.pid))) return;
+    Sound.init();
+    St.on = true; St.pid = id;
+    St.ox = p.x; St.oy = p.y; St.dx = 0; St.dy = 0;
+    T.left = T.right = T.up = T.down = false;
+  };
+  const move = (id, p)=>{
+    if(!St.on || id !== St.pid) return;
+    stickApply(p.x - St.ox, p.y - St.oy);
+  };
+  const up = id=>{
+    if(!St.on || (id != null && id !== St.pid)) return;
+    stickClear();
+  };
+  // ★ v13：触屏设备优先走 touch —— 与右半屏同一事件族（见上方 v13 说明）。
+  //   原先只挂 pointer，真机「右手按住射击 + 左手推摇杆」时 pointer 事件会丢，摇杆卡死。
+  if('ontouchstart' in window){
+    const w = t=>({id:t.identifier, p:toLocal(t.clientX, t.clientY)});
+    zone.addEventListener('touchstart', e=>{ e.preventDefault();
+      for(const t of e.changedTouches){
+        leftStarters.add(t.identifier);                 // 记住：这根手指是在左半区按下的
+        const q = w(t); down(q.id, q.p);
+      } }, {passive:false});
+    zone.addEventListener('touchmove', e=>{ e.preventDefault();
+      // 兜底接管：只在「确实在左半区按下过的手指」里挑 —— 绝不用漂移到左区的右手手指抢摇杆，
+      //   否则会出现「右手指按住屏幕时，左摇杆被右手绑架、方向乱跑/锁死」。
+      //   （原点取「手指现在的位置」，所以刚接管这一下方向是空的，手指一动就出方向。）
+      if(!St.on && G.state==='play' && e.changedTouches.length){
+        for(const t of e.changedTouches){
+          if(leftStarters.has(t.identifier)){
+            const q = w(t); down(q.id, q.p); break;
+          }
+        }
+      }
+      for(const t of e.changedTouches){ const q = w(t); move(q.id, q.p); } }, {passive:false});
+    const end = e=>{ e.preventDefault();
+      for(const t of e.changedTouches){ leftStarters.delete(t.identifier); up(t.identifier); } };
+    zone.addEventListener('touchend', end, {passive:false});
+    zone.addEventListener('touchcancel', end, {passive:false});
+  } else {
+    const w = e=>({id:e.pointerId, p:toLocal(e.clientX, e.clientY)});
+    zone.addEventListener('pointerdown', e=>{
+      const idle = !(G.state==='title'||G.state==='over'||G.state==='win'||G.state==='pause') && !St.on;
+      if(idle) e.preventDefault();
+      // setPointerCapture 在「指针已经抬起 / 非活跃指针」时会抛 NotFoundError，
+      // 一抛异常整个处理函数就中断，摇杆直接失灵 —— 必须兜住
+      try{ zone.setPointerCapture(e.pointerId); }catch(_){}
+      const q = w(e); down(q.id, q.p);
+    });
+    zone.addEventListener('pointermove', e=>{ if(!e.buttons) return; e.preventDefault();
+      const q = w(e); move(q.id, q.p); });
+    zone.addEventListener('pointerup', e=>{ e.preventDefault(); up(e.pointerId); });
+    zone.addEventListener('pointercancel', e=>{ e.preventDefault(); up(e.pointerId); });
+    // 捕获丢失只在「丢的正是当前控制手指」时清 —— 别的指针丢失不该波及摇杆
+    zone.addEventListener('lostpointercapture', e=>up(e.pointerId));
+  }
+  zone.addEventListener('contextmenu', e=>e.preventDefault());
+}
+bindStick(document.getElementById('padL'));
+// 切后台 / 窗口失焦时清掉方向，避免回来时人物一直往一个方向走
+addEventListener('blur', ()=>{ stickClear(); rightClear(); });
+document.addEventListener('visibilitychange', ()=>{ if(document.hidden){ stickClear(); rightClear(); } });
+
+/* ------------------------- 关卡地图 ------------------------- */
+/* 地面段：连续可走；空中平台：单向 */
+/* 地面段带 gnd 标记：landCheck 用它区分「实心地形」与「悬空平台」，
+   台阶跨越只能发生在实心地形之间，否则站在平台上会被吸到地面。*/
+function buildMap(){
+  const ground = [], plat = [], enemies = [], items = [];
+  let x = 0, h = 196, dir = 1;
+  while(x < 4160){
+    const len = 250 + Math.floor(Math.random()*180);
+    ground.push({x:x, y:h, w:len, gnd:true});
+    // 起伏：相邻高度差 ≤13
+    let nh = h + dir*(6 + Math.random()*7);
+    if(nh < 176) { nh = 176; dir = 1; }
+    if(nh > 212) { nh = 212; dir = -1; }
+    h = nh; x += len;
+    // 敌人：每段生成一片敌人（3~6个），位置集中成簇，形成"一片一片"的群感
+    const seg = ground[ground.length-1];
+    const nEnemies = 3 + Math.floor(Math.random()*4);            // 3~6 个/片
+    const clusterX = seg.x + 70 + Math.random()*(Math.max(40, seg.w - 260));
+    for(let k=0;k<nEnemies;k++){
+      const ePos = clusterX + k*22 + Math.random()*8;            // 一排展开，间隔约22px
+      const r = Math.random();
+      if(r < 0.55)      enemies.push({type:'soldier', x:ePos, y:0});
+      else if(r < 0.85) enemies.push({type:'flyer',   x:ePos, y:0});
+      else              enemies.push({type:'turret',  x:ePos, y:0});
+    }
+    // 空中平台
+    if(Math.random() < 0.75 && ground.length>1){
+      plat.push({x:ground[ground.length-1].x + 40 + Math.random()*(len-160),
+                 w: 70 + Math.random()*70, y: 130 + Math.random()*40});
+    }
+    // 道具
+    if(Math.random() < 0.32){
+      items.push({x:seg.x + 60 + Math.random()*(seg.w - 130), y:110 + Math.random()*50, kind:['S','L','E','1UP','B'][Math.floor(Math.random()*5)], got:false});
+    }
+    // 沟壑：缺口 22~36px（实测跳跃射程 94px，窄坑在手机上也留足起跳窗口）
+    if(x > 420 && x < 3980 && Math.random() < 0.5){
+      x += 22 + Math.floor(Math.random()*15);
+    }
+  }
+  ground.push({x:x, y:h, w:700, gnd:true});   // 终段平地（BOSS 战场）
+  // BOSS 前哨
+  plat.push({x:4150, w:90, y:150});
+  plat.push({x:4300, w:90, y:118});
+  items.push({x:4200, y:132, kind:'S', got:false});
+  items.push({x:4360, y:100, kind:'1UP', got:false});
+  const MAPW = x + 700;
+  return {ground, plat, enemies, items, w:MAPW, bossX:MAPW-260};
+}
+
+/* ------------------------- 状态 ------------------------- */
+let cv, ctx, map, P, bullets, ebullets, effects, cam, boss;
+let G = { state:'title', score:0, hi:0, lives:0, over:false, shake:0, banner:'', bannerT:0, t:0, kills:0, cp:70 };
+
+function newGame(){
+  map = buildMap();
+  G.score = 0; G.lives = 5; G.state='play'; G.kills = 0; G.banner='第一关 · 血月战场'; G.bannerT = 150;
+  cam = {x:0, y:0, lock:null};
+  bullets = []; ebullets = []; effects = [];
+  boss = null;
+  G.cp = 70;                       // 检查点：每前进一段就打点
+  P = {
+    x:70, y:150, w:10, h:16, vx:0, vy:0, dir:1, onGround:false, stand:null,
+    frame:0, anim:0, duck:false, jumpHold:0, fireCd:0, weapon:0,
+    inv:90, dead:false, deadT:0, spawnT:0, air:0, jumpReq:false, wasJump:false,
+    drop:false   // 空降入场中（新英雄从屏幕左上角垂直降落，见 updatePlayer/respawn）
+  };
+  // 复活玩家到安全的地面段
+  const g0 = groundAt(70) || map.ground[0];
+  P.x = 70; P.y = g0.y - P.h; P.vx = 0; P.vy = 0;
+}
+function startGame(){ Sound.init(); newGame(); }
+
+function togglePause(){
+  if(G.state==='play'){ G.state='pause'; }
+  else if(G.state==='pause'){ G.state='play'; }
+}
+function toggleSound(){ Sound.on = !Sound.on; document.getElementById('btnSound').textContent = Sound.on?'♪ 开':'♪ 关'; }
+document.getElementById('btnPause').addEventListener('click', ()=>{ Sound.init(); togglePause(); });
+document.getElementById('btnSound').addEventListener('click', ()=>{ Sound.init(); toggleSound(); });
+
+/* ------------------------- 工具 ------------------------- */
+function groundAt(x){           // 地面只有一层不重叠，找到 x 所在的那段即可
+  for(const g of map.ground){
+    if(x >= g.x && x <= g.x + g.w) return g;
+  }
+  return null;
+}
+// 台阶自动跨越的最大高差（地形相邻段高差 6~13px，留 2px 余量）
+// 只给敌兵用：敌兵要一路走到底，卡在台阶上会堵路/掉沟。
+const STEP_UP = 15;
+// 玩家的「可自动跨过的微小起伏」容差。超过它的才是「明显台阶」，必须跳上去。
+// 取 5 有两个硬约束，两边都卡着，不能随便改：
+//   上界：buildMap 里 nh 会被 clamp 到 [176,212]，本应 6~13px 的高差会被压到 3~5px，
+//         所以容差必须 ≥ 5，否则这种「视觉上看不出是台阶」的 3~5px 起伏会把玩家卡死。
+//   下界：真正的地形高差最小 6px，容差必须 < 6，否则 6px 台阶会被自动滑上去。
+// 另一个必须守住的点：stepWall 和这里吸附必须用同一个基准（上一帧脚底 feetPrev）。
+// 曾经这里用 feetNow（移动后），每帧重力会让它比地面高 0.42px，
+// 于是高差 3px 时 stepWall 判「能过」（3≤3）而吸附判「不能过」（3.42>3），
+// 中间裂出 1px 死缝：人被推回来又不吸附，原地来回弹，卡死。
+const STEP_TOL = 5;
+function landCheck(p, prevY){
+  // 单向平台 + 地面。用「上一帧脚底」判落点，防高速下坠穿透。
+  const feetPrev = prevY + p.h;
+  const feetNow  = p.y + p.h;
+  // 脚下横向范围（左右各留 1px 余量，避免段边界出现判定空洞）
+  const lx = p.x - 1, rx = p.x + p.w + 1;
+  let target = null;
+  const consider = (g)=>{
+    if(lx < g.x + g.w && rx > g.x){                     // 脚下有这块地
+      if(g.y >= feetPrev - 1 && g.y <= feetNow && (!target || g.y < target.y)) target = g;
+    }
+  };
+  for(const g of map.ground) consider(g);
+  for(const s of map.plat) consider(s);
+  if(target && p.vy >= 0){
+    p.y = target.y - p.h; p.vy = 0; p.onGround = true; p.stand = target; return;
+  }
+  // ---- 微小起伏吸附 ----
+  // 只吸附 ±STEP_TOL 以内的误差（浮点、段边界的 1px 级抖动），让玩家稳稳站在当前地面上。
+  // 绝不能在这里把 6~13px 的台阶一起吸附上去 —— 那正是「走过去自动滑上台阶」的根因
+  // （老代码容差是 STEP_UP=15，比地形最大高差还大，等于地形对玩家完全无台阶）。
+  // 真正的台阶由 stepWall() 在水平方向挡住，玩家必须跳过去。
+  // 悬空平台不参与（否则站在平台上会被吸到地面）。
+  if(p.vy >= 0){
+    let step = null;
+    for(const g of map.ground){
+      if(!(lx < g.x + g.w && rx > g.x)) continue;
+      // 基准必须是 feetPrev（上一帧脚底），不能是 feetNow：
+      // feetNow 含本帧重力位移（+0.42），会和 stepWall 的判据错开一条缝，
+      // 高差刚好等于 STEP_TOL 时两边给出相反结论 → 卡死。详见 STEP_TOL 的注释。
+      const rise = feetPrev - g.y;                       // >0 = 地面在脚底之上
+      if(rise > -1 && rise <= STEP_TOL && (!step || g.y < step.y)) step = g;
+    }
+    if(step){ p.y = step.y - p.h; p.vy = 0; p.onGround = true; p.stand = step; return; }
+  }
+  p.onGround = false; p.stand = null;
+}
+
+/* 台阶侧壁：返回挡在前进方向上的台阶侧面 x 坐标，没有阻挡返回 null。
+   判据两条，缺一不可：
+     ① 新位置脚下横向压到这块实心地面（lx/rx 与 landCheck 同一套 1px 余量）
+     ② 这块地面的顶面比「移动前的脚底」高出 STEP_TOL 以上 —— 也就是「腿抬不过去」
+
+   feetPrev 必须传「本帧移动之前」的脚底高度，绝不能传移动后的：
+   玩家跳起来落在台阶上的那一帧，脚底正从台阶顶面上方穿过来（移动前在顶面之上、
+   移动后已到顶面之下），拿移动后的值判会把它误当成「侧面撞墙」，
+   于是刚跳上去就被横推回台阶外边 —— 表现为「跳了也没用」。
+   拿移动前的值判就把两种情况天然分开了：
+     · 上一帧脚底已在台阶顶面之上 → 不挡，交给 landCheck 落地（踩上去）
+     · 上一帧脚底低于顶面 → 挡住了（侧面撞墙）
+   单向平台 map.plat 不参与 —— 它本来就是从下面能顶穿的。
+   为什么必须在水平方向做：老代码 P.x 无脑加、纵向 landCheck 又把 ≤15px 高差
+   直接吸附上去，于是任何台阶都能「滑」上去。 */
+function stepWall(newX, feetPrev, dir){
+  const lx = newX - 1, rx = newX + P.w + 1;
+  let side = null, top = Infinity;
+  for(const g of map.ground){
+    if(!(lx < g.x + g.w && rx > g.x)) continue;
+    if(feetPrev - g.y <= STEP_TOL) continue;           // 脚抬得够高，能迈过去
+    if(g.y < top){ top = g.y; side = dir > 0 ? g.x : (g.x + g.w); }
+  }
+  return side;
+}
+function clamp(v,a,b){ return v<a?a:(v>b?b:v); }
+
+/* ------------------------- 粒子/文字 ------------------------- */
+function boom(x,y,n,col){
+  n = n||10;
+  for(let i=0;i<n;i++){
+    const a = Math.random()*Math.PI*2, s = 0.6+Math.random()*2.6;
+    effects.push({t:'p', x:x, y:y, vx:Math.cos(a)*s, vy:Math.sin(a)*s-0.5,
+                  life:18+Math.random()*20, col:col||PAL.yellow, r:1+Math.random()*2});
+  }
+  effects.push({t:'r', x:x, y:y, r:2, life:9, col:col||PAL.white});
+}
+function pop(x,y,txt,col){ effects.push({t:'t', x:x, y:y, txt:txt, life:52, col:col||PAL.white}); }
+
+/* ------------------------- 玩家 ------------------------- */
+function updatePlayer(){
+  if(P.dead){ P.deadT++; P.vy += GRAV; P.y += P.vy; if(P.deadT>80) respawn(); return; }
+  if(P.drop){
+    // 空降入场：新英雄从屏幕左上角垂直降落，落地前不可操作（无敌由 inv 兜底）
+    P.y += P.vy;
+    const g = groundAt(P.x);
+    if(g && P.y + P.h >= g.y){ P.y = g.y - P.h; P.vy = 0; P.drop = false; P.onGround = true; }
+    return;
+  }
+  if(P.inv>0) P.inv--;
+  if(P.fireCd>0) P.fireCd--;
+  if(P.spawnT>0) P.spawnT--;
+
+  // 蹲下 = 方向键「下」（触屏摇杆往下推 / 键盘 ↓ 或 S）。
+  // 原先是右下角一个独立的「蹲」按钮，老杨要求撤掉、改用方向下代替。
+  // 要求踩在地面且竖直速度归零，空中按着下不算蹲。
+  P.duck = held('down') && P.onGround && P.vy===0;
+  const dx = dirX(), dy = dirY();
+
+  // 水平：蹲下不能移动（和原版魂斗罗一致，趴下只能原地打）
+  P.vx = dx * (P.duck ? 0 : SP_RUN);
+  // 蹲着也要转身。原来这里带 !P.duck，蹲住时朝向不变 ——
+  // 换成方向下触发后这就不行了：蹲着按左/右会变成「人朝右、枪朝左下」，
+  // 枪看起来从背后伸出来（绘制端按瞄准方向挂肩，和身体朝向对不上）。
+  if(dx!==0 && P.onGround && P.vy===0) P.dir = dx;
+
+  // 跳跃：点按小跳，按住高跳
+  const jh = held('jump');
+  if(jh && !P.wasJump) P.jumpReq = true;
+  P.wasJump = jh;
+  if(P.jumpReq && P.onGround){ P.vy = SP_JUMP; P.onGround = false; P.jumpReq = false; P.air = 1; Sound.jump(); }
+
+  // 重力：上升且按住跳键时用小重力（跳得高），否则正常重力
+  const rising = P.vy < 0;
+  P.vy += (rising && jh) ? GRAV_HOLD : GRAV;
+  if(P.vy>SP_MAX) P.vy = SP_MAX;
+  const prevY = P.y;
+  P.x += P.vx; P.y += P.vy;
+
+  // ---- 台阶阻挡 ----
+  // 走到明显台阶前会被卡在台阶侧面，必须跳上去（跳起后脚底高过台阶顶面才放行）。
+  // 贴到台阶侧面上而不是回退整帧位移，这样人正好贴着台阶边、不会来回抖。
+  // 必须在 landCheck 之前：先挡住横向，纵向吸附才不会把玩家抬上台阶。
+  // 基准用 prevY + P.h（移动前的脚底），理由见 stepWall 的注释。
+  if(P.vx !== 0){
+    const d = P.vx > 0 ? 1 : -1;
+    const side = stepWall(P.x, prevY + P.h, d);
+    if(side !== null){
+      P.x = d > 0 ? side - P.w - 1 : side + 1;
+      P.vx = 0;
+    }
+  }
+
+  // 边界
+  const xMin = cam.x + 2, xMax = cam.x + VW - 12;
+  if(P.x < xMin){ P.x = xMin; P.vx = 0; }
+  if(P.x > xMax){ P.x = xMax; P.vx = 0; }
+
+  landCheck(P, prevY);
+
+  // 检查点：落地且前进了 220px 以上就打点（要求脚下前后都有实地，且不在沟边）
+  if(P.onGround && !boss && P.x > G.cp + 220 && groundAt(P.x-8) && groundAt(P.x+40) && groundAt(P.x+90)){
+    G.cp = P.x;
+  }
+
+  // 顶部封顶，避免飞出画面
+  if(P.y < 8){ P.y = 8; if(P.vy<0) P.vy = 0; }
+
+  // 掉沟：无敌帧挡不住坠落，直接判死（否则会一路掉到画面外）
+  if(P.y > VH+40){ P.inv = 0; killPlayer(); }
+
+  // 动画
+  // P.frame 的取值域是 {0,1,2}：0/1 = 两张走路帧，2 = 跳跃帧。
+  // 老杨报的 bug：跳一下之后走路不动了，像在地面上滑 —— 根因是这里用了 `P.frame ^= 1`。
+  // 跳跃后 frame=2，落地行走时 2^1=3、3^1=2，在 {2,3} 里震荡；
+  // 而 playerSprite() 那边是 `P.frame ? P_RUN1 : P_RUN0`，任何非 0 都取 P_RUN1，
+  // 于是永远显示同一张走路帧 —— 腿不动，只有人在位移。
+  // 修法：走路帧切换显式在一对帧号之间翻，绝不让 2 参与运算；
+  // 落地静止时复位到 0（站姿），否则会残留跳跃帧让人站着摆出半走的姿势。
+  if(P.onGround && dx!==0){
+    // 刚落地（上一帧还是跳跃帧 2）：立刻从走路循环第一帧重新起步。
+    // 不做这一步的话，帧翻转要等 `anim%6===0` 的边界才发生，
+    // 落地后最多有 5 帧（83ms）还挂着跳跃帧 —— 看起来像落地瞬间「定」了一下。
+    if(P.frame === 2){ P.frame = 0; P.anim = 0; }
+    P.anim++;
+    if(P.anim%6===0) P.frame = P.frame===0 ? 1 : 0;
+  } else {
+    P.frame = (P.vy<0 || !P.onGround) ? 2 : 0;
+  }
+
+  // 射击
+  if(held('fire') && P.fireCd<=0 && P.spawnT<=0) fire();
+}
+
+/* 瞄准角（返回「世界角度」，供 fire() 直接算 vx/vy，也供绘制端用）
+   老杨报的 bug：人转身朝左、枪口也朝左，不按方向键时子弹却往右飞，像从背心穿出去。
+   根因：老代码在 dx===0（没按左右）时无条件 return 0（朝右），压根没看 P.dir。
+
+   修法 —— 引入「水平基准 h」，三级取值，顺序不能乱：
+     ① 有左右输入          → 用输入（允许朝背后方向开枪，这是玩家主动要的）
+     ② 只有上/下、没有左右 → h=0，走垂直射（-90 / 90），保持 FC 原味。
+                               注意这里不能退回用 P.dir，否则面朝左按上会歪成左上斜 135°，
+                               那是「没按左右就继承朝向」这个 bug 的变种，只是换了个方向犯。
+     ③ 完全没按任何方向    → 用 P.dir，子弹从枪口方向出去。
+   P.dir: 1=朝右，-1=朝左。 */
+function aimAngle(){
+  const dy = dirY(), dx = dirX();
+  // hasH：玩家是否真的按了左右。斜/垂直的判据必须用它，不能用 h!==0 ——
+  // 因为「完全没按方向」时 h 会取 P.dir（非 0），用 h!==0 判断会让垂直分支永远走不到。
+  const hasH = dx !== 0;
+  if(P.duck){
+    // 蹲着：上=垂直上/上斜；不按上，没按左右就平射（按朝向）
+    if(held('up')) return hasH ? (dx>0 ? -45 : -135) : -90;
+    return hasH ? (dx>0 ? 45 : 135) : (P.dir>0 ? 0 : 180);
+  }
+  if(dy===-1) return hasH ? (dx>0 ? -45 : -135) : -90;   // 上斜 / 垂直上
+  if(dy===1)  return hasH ? (dx>0 ? 45  : 135)  : 90;    // 下斜 / 垂直下
+  return (hasH ? dx : P.dir) > 0 ? 0 : 180;               // 平射：朝向哪边就打哪边
+}
+/* ---- 枪的锚点：必须和「身体」用同一条镜像轴，否则转身后枪会跟身体脱开 ----
+   drawSprite() 的翻转是在精灵自身框内完成的（`x + (sw-1-c)`），框左边缘恒为 x，
+   所以身体的镜像轴永远是「躯干中线」= P.x + (sw-1)/2，不是 P.x。
+   老代码写 `Math.cos(ang)>=0 ? 2 : -2` 再配 rotate(180°)，等于绕 P.x 镜像，
+   与身体差了半个精灵宽（主角精灵 sw=14，实测差 12px）：
+   朝右时枪贴着身体，朝左时枪+手整块甩到身体左侧外面 —— 看着像「换了一把枪」。
+   实测包围盒：朝右 枪 dx[6,12]；朝左 枪 dx[-13,-1]（甩出精灵框外）。
+   朝右保持原样（+2，玩家看惯的姿势），左向取关于躯干中线的镜像点。
+   注意镜像点要 +1：rotate(180°) 下局部像素列 u 映射到世界列 sx-1-u（半开区间），
+   算出来是 `2*cx-(px+2)+1 = P.x + sw - 2`，写成 sw-3 会差 1px（实测过，别改回去）。 */
+function playerSprite(){ return P.duck ? P_DUCK : (P.onGround ? (P.frame?P_RUN1:P_RUN0) : P_JUMP); }
+const SPR_W = new WeakMap();   // 精灵宽度缓存：精灵是常量数组，宽度不变，一次计算永久复用
+function spriteW(sp){
+  if(SPR_W.has(sp)) return SPR_W.get(sp);
+  let w = 0;
+  for(const row of sp) if(row.length > w) w = row.length;
+  SPR_W.set(sp, w);
+  return w;
+}
+function gunAnchorOff(angRad){
+  const sw = spriteW(playerSprite());
+  return Math.cos(angRad) >= 0 ? 2 : (sw - 2);
+}
+/* 枪口离锚点的距离。绘制里枪身是 rect(4,-2,7,4)，末端在局部 x=11；
+   fire() 的子弹起点必须用同一个值，否则子弹不从画出来的枪口出去。 */
+const GUN_REACH = 11;
+/* 枪身高度锚点：与 drawPlayer 的 sy 一致（蹲姿 +11，不是 +13） */
+function gunAnchorY(){ return P.duck ? 11 : 8; }
+
+function fire(){
+  const w = WEAPONS[P.weapon];
+  P.fireCd = w.cd;
+  const ang = aimAngle()*Math.PI/180;
+  // 枪口与 drawPlayer 共用 gunAnchorOff / gunAnchorY / GUN_REACH，
+  // 保证子弹就是从「画出来的那根枪管」里出去的。
+  const ax = P.x + gunAnchorOff(ang), ay = P.y + gunAnchorY();
+  const muzzle = {x:ax+Math.cos(ang)*GUN_REACH, y:ay+Math.sin(ang)*GUN_REACH};
+  if(P.weapon===0){
+    bullets.push({x:muzzle.x,y:muzzle.y,vx:Math.cos(ang)*5.4,vy:Math.sin(ang)*5.4,dmg:1,col:PAL.white});
+    Sound.shoot();
+  } else if(P.weapon===1){
+    for(let i=-2;i<=2;i++){
+      const a = ang + i*0.16;
+      bullets.push({x:muzzle.x,y:muzzle.y,vx:Math.cos(a)*5.1,vy:Math.sin(a)*5.1,dmg:1,col:PAL.yellow,life:26});
+    }
+    Sound.shootS();
+  } else if(P.weapon===2){
+    bullets.push({x:muzzle.x,y:muzzle.y,vx:Math.cos(ang)*8.5,vy:Math.sin(ang)*8.5,dmg:3,col:'#7cf3ff',pierce:true,life:30});
+    Sound.laser();
+  } else {
+    // 爆炸弹：直线重弹（偏慢），命中敌人/BOSS 即爆炸，范围伤害（见 explodeBomb）
+    bullets.push({x:muzzle.x,y:muzzle.y,vx:Math.cos(ang)*4.2,vy:Math.sin(ang)*4.2,dmg:3,col:'#ff6d00',bomb:true,life:60});
+    Sound.shoot();
+  }
+  // 后坐闪
+  effects.push({t:'r', x:muzzle.x, y:muzzle.y, r:1, life:4, col:PAL.white});
+}
+
+function killPlayer(){
+  if(P.inv>0 || P.dead) return;
+  P.dead = true; P.deadT=0; P.vy=-5; Sound.die(); G.shake=10;
+  boom(P.x+5, P.y+8, 20, PAL.orange||'#ff9800');
+}
+/* ------------------------- 复活点 ------------------------- */
+/* 关键：落点必须验证"脚下确有实地"，否则复活后会直接掉沟里反复摔死。
+   另外落点要离坑边足够远——复活在坑边 6px 处，玩家看不清就掉下去了。
+   BOSS 战还有个坑：战场是一整段 700px 宽的平地，起点在 bossX-440，
+   用 "g.x > bossX-200" 判断根本排除不掉，玩家会复活在 BOSS 枪口下反复送死。*/
+const SAFE_MARGIN = 30;         // 落点距地面段两端的最小距离
+function safeSpot(x){
+  // 落点前后 SAFE_MARGIN 内都必须是实地，且该处地面高度要与目标段一致
+  if(!groundAt(x - SAFE_MARGIN) || !groundAt(x + SAFE_MARGIN)) return null;
+  const g = groundAt(x);
+  if(!g) return null;
+  return g;
+}
+function pickRespawn(){
+  // BOSS 战：战场段整段排除，改为在战场左端找落点（离 BOSS 越远越好）
+  if(boss){
+    const bx = map.bossX - 210;                       // 战场左侧安全区
+    let x = bx, g = groundAt(bx);
+    if(g){
+      x = clamp(bx, g.x + SAFE_MARGIN, g.x + g.w - SAFE_MARGIN);
+      // 战场段内部一般没有坑，但还是验一次
+      if(!safeSpot(x)) g = null;
+    }
+    if(!g){
+      // 往左找最近的、足够宽且落点安全的实地段
+      let best = null;
+      for(const s of map.ground){
+        if(s.w < 90) continue;
+        const cx = clamp(bx, s.x + SAFE_MARGIN, s.x + s.w - SAFE_MARGIN);
+        if(!safeSpot(cx)) continue;
+        if(!best || Math.abs(cx - bx) < Math.abs(best.x - bx)) best = {x:cx, g:s};
+      }
+      if(best) return best;
+      const s2 = map.ground[map.ground.length-1];
+      return {x:clamp(bx, s2.x + 24, s2.x + s2.w - 24), g:s2};
+    }
+    return {x:x, g:g};
+  }
+  const cands = [];
+  // 以检查点为中心，向两侧找可用地面段（越近越优先）
+  for(const g of map.ground){
+    if(g.w < 90) continue;
+    const near = clamp(G.cp, g.x + SAFE_MARGIN, g.x + g.w - SAFE_MARGIN);
+    cands.push({g:g, x:near, dist:Math.abs(near - G.cp)});
+  }
+  if(!cands.length){
+    const g = map.ground[0];
+    return {x:clamp(G.cp, g.x + 24, g.x + g.w - 24), g:g};
+  }
+  cands.sort((a,b)=>a.dist-b.dist);
+  for(const c of cands){
+    // 落点前后要有足够的落脚空间（远离坑边）
+    if(safeSpot(c.x)) return {x:c.x, g:c.g};
+  }
+  // 全部候选都不安全（段太窄）→ 取离检查点最近的一段，居中放
+  const c = cands[0];
+  const x = clamp(G.cp, c.g.x + 10, c.g.x + c.g.w - 10);
+  return {x:x, g:c.g};
+}
+function respawn(){
+  G.lives--;
+  if(G.lives < 0){ gameOver(); return; }
+  // 重生点 = 当前屏幕左端的地面（新英雄从屏幕左上角空降落下，画面连续不动、不闪）
+  const bx = cam.x + 16;
+  let g = groundAt(bx);
+  if(!g){   // 屏幕左端恰是沟壑，向右在屏幕内找最近的实地
+    for(const s of map.ground){
+      if(s.x + s.w <= bx) continue;
+      if(s.x > cam.x + VW) break;
+      g = s; break;
+    }
+  }
+  if(!g) g = pickRespawn().g || map.ground[0];
+  const landY = g.y;
+  // 清掉重生点周围的敌方弹幕，避免"一落地就被打死"
+  for(let i=ebullets.length-1;i>=0;i--){
+    if(Math.abs(ebullets[i].x - bx) < 120 && Math.abs(ebullets[i].y - landY) < 100) ebullets.splice(i,1);
+  }
+  // 清掉重生点附近的敌人，防止"复活→被同一个敌人打死"死循环
+  for(const e of map.enemies){
+    if(e.active && !e.dead && Math.abs(e.x - bx) < 240){ e.active = false; e.passed = true; }
+    else if(e.active && !e.dead) e.cd = Math.max(e.cd, 70);   // 其余敌人给个缓冲
+  }
+  // 空降入场：锁定相机在死亡画面（画面连续不动、不闪），新英雄从屏幕左上角垂直降落
+  cam.lock = cam.x; cam.smooth = 30;
+  P.x = bx; P.y = landY - P.h - 50; P.vx = 0; P.vy = 2.2;
+  P.drop = true; P.dead = false; P.inv = 100; P.spawnT = 0; P.weapon = 0;
+  // 必须重置跳跃输入状态：否则"死时按住跳键"会让 wasJump 停在 true，
+  // 复活后再也触发不了跳跃，玩家会一路掉沟反复摔死
+  P.wasJump = false; P.jumpReq = false; P.onGround = false; P.air = 0;
+  P.jumpReq = false; P.wasJump = false; P.jumpHold = 0;
+  P.vx = 0;   // vy 保持上方空降起点设置的 2.2，落地时由 updatePlayer 清零
+  // 注：空降重生时相机已锁定在死亡画面（上方 cam.lock = cam.x），
+  // 不再做"相机同步到复活点"，否则会把镜头从死亡画面拽到复活点、画面跳闪。
+  // BOSS 战镜头锁定时：确认复活点落在锁定画面内，并给 BOSS 一个开场缓冲，
+  // 免得玩家一复活就被下一轮弹幕或 BOSS 本体扫到
+  if(boss && !boss.dead){
+    // 锁定镜头时 cam.x 每帧会被 cam.lock 覆盖，所以边界要用 cam.lock 算
+    const cx = (cam.lock != null) ? cam.lock : cam.x;
+    if(P.x < cx + 40) P.x = cx + 40;
+    if(P.x > cx + VW - 40) P.x = cx + VW - 40;
+    boss.cd = Math.max(boss.cd, 110);
+    boss.x = clamp(boss.x, cx + 110, Math.min(cx + VW - 110, map.w - 10));
+  }
+}
+function gameOver(){
+  G.state = 'over'; G.over = true;
+  if(G.score > G.hi) G.hi = G.score;
+  try{ localStorage.setItem('contra_hi', String(G.hi)); }catch(e){}
+}
+
+/* ------------------------- 敌人 ------------------------- */
+function spawnEnemies(){
+  // 同屏敌人数量上限，避免新手被弹幕淹没
+  let live = 0;
+  for(const e of map.enemies) if(e.active && !e.dead) live++;
+  for(const e of map.enemies){
+    if(e.dead || e.active || e.passed) continue;     // 已滚出左侧的敌人不再回收重生
+    if(live >= 7) break;
+    if(e.x > cam.x + VW + 30) continue;
+    e.active = true; live++;
+    e.hp = e.type==='turret'?4:2;
+    e.vx = 0; e.vy = 0; e.cd = 40 + Math.random()*60;
+    e.anim = 0; e.t = Math.random()*100;
+    if(e.type==='soldier'){
+      const g = groundAt(e.x);
+      if(!g){ e.passed = true; return; }            // 坑上方不刷兵
+      e.dir = e.x > P.x ? -1 : 1;
+      e.y = g.y-14;
+    } else if(e.type==='turret'){
+      const g = groundAt(e.x);
+      if(!g){ e.passed = true; return; }
+      e.y = g.y-12;
+    } else {
+      e.y = 90 + Math.random()*40;
+      e.baseY = e.y;
+    }
+  }
+}
+
+function updateEnemies(){
+  for(const e of map.enemies){
+    if(!e.active || e.dead) continue;
+    if(e.x < cam.x - 60){ e.active = false; e.passed = true; }        // 甩出屏外回收
+    e.t++;
+    if(e.cd>0) e.cd--;
+    if(e.type==='soldier'){
+      e.anim++;
+      e.x += e.dir*0.62;
+      // 转向玩家
+      if(Math.abs(e.x-P.x)<70 && e.x>P.x) e.dir=-1;
+      else if(Math.abs(e.x-P.x)<70 && e.x<P.x) e.dir=1;
+      // 边缘/障碍跳（仅在落地或下落时起跳，避免滞空复读）
+      const gAhead = groundAt(e.x + e.dir*9);
+      if(!gAhead && e.vy >= 0) e.vy = SP_JUMP*0.9;
+      const evy0 = e.y;
+      e.vy = Math.min(e.vy+GRAV, SP_MAX);
+      e.y += e.vy;
+      const gy = groundAt(e.x);
+      if(gy && e.vy>=0){
+        const feetPrevE = evy0 + 14, feetNowE = e.y + 14;
+        // 正常落地 + 台阶跨越（与玩家同一套规则，防止敌兵自己掉进沟里）
+        if(feetPrevE <= gy.y + 1 && feetNowE >= gy.y){ e.y = gy.y - 14; e.vy = 0; }
+        else{
+          const rise = feetNowE - gy.y;
+          if(rise > -1 && rise <= STEP_UP){ e.y = gy.y - 14; e.vy = 0; }
+        }
+      }
+      if(e.cd<=0 && Math.abs(e.x-P.x)<210 && Math.abs(e.y-P.y)<48){
+        e.dir = P.x>e.x?1:-1;
+        const a = 0.15*(P.x>e.x?1:-1);
+        ebullets.push({x:e.x+5,y:e.y+6,vx:Math.cos(a)*3.3,vy:Math.sin(a)*3.3,dmg:1,col:'#ff7043'});
+        e.cd = 120 + Math.random()*120; Sound.beep(240,0.05,'square',0.02);
+      }
+    } else if(e.type==='turret'){
+      if(e.cd<=0){
+        const dx = P.x-e.x, dy = (P.y+8)-(e.y+4), d = Math.hypot(dx,dy)||1;
+        ebullets.push({x:e.x+5,y:e.y+4,vx:dx/d*2.1,vy:dy/d*2.1,dmg:1,col:'#ffb74d'});
+        e.cd = 150 + Math.random()*90;
+      }
+    } else { // flyer
+      e.y = e.baseY + Math.sin(e.t/22)*16;
+      e.x -= 0.9;
+      if(e.cd<=0){
+        ebullets.push({x:e.x+4,y:e.y+6,vx:0,vy:1.5,dmg:1,col:'#ba68c8'});
+        e.cd = 150;
+      }
+      if(e.x < cam.x-40){ e.active=false; e.passed=true; }
+    }
+    // 触碰伤害
+    if(!P.dead && Math.abs(P.x-e.x)<12 && Math.abs(P.y-e.y)<14) killPlayer();
+  }
+}
+
+/* ------------------------- BOSS ------------------------- */
+/* 要塞是"地面重装"：机体坐在地面上，弱点核心落在玩家平射弹道上 */
+const BOSS_W = 58, BOSS_H = 56;
+function makeBoss(){
+  const g = groundAt(map.bossX) || map.ground[map.ground.length-1];
+  const y0 = g.y - BOSS_H;                       // 坐在地面上
+  const bulY = y0 + 34;                           // 主炮口 / 弱点核心高度
+  return {x:map.bossX, y:y0, w:BOSS_W, h:BOSS_H, hp:48, maxhp:48, dir:-1, t:0,
+          phase:0, cd:110, flash:0, dead:false, dying:0, y0:y0, gy:g.y, bulY:bulY};
+}
+function updateBoss(){
+  if(!boss){
+    if(P.x + 40 > map.bossX){
+      boss = makeBoss();
+      cam.lock = clamp(map.bossX - VW*0.55, 0, Math.max(0,map.w-VW));  // 锁定战场镜头
+      boss.enter = true;                              // 驶入阶段：从右侧画面外驶出
+      boss.x = cam.lock + VW + 30;                    // 出生在屏幕右缘外（不可见）
+      boss.y = boss.y0;                               // 驶入期间坐地，不做浮动
+      G.banner = '警报 · 敌方要塞驶入'; G.bannerT = 140;
+      Sound.beep(180,0.4,'sawtooth',0.05,60);
+    }
+    return;
+  }
+  if(boss.dead){
+    boss.dying++;
+    if(boss.dying%4===0) boom(boss.x+Math.random()*boss.w, boss.y+Math.random()*boss.h, 8, '#ff9800');
+    if(boss.dying>150){ victory(); }
+    return;
+  }
+  const b = boss;
+  // 驶入阶段：从屏幕右侧缓缓驶入战场，到位前不浮动、不巡逻、不攻击
+  if(b.enter){
+    b.x -= 2.6;                       // 向左驶入
+    if(b.x <= map.bossX){ b.x = map.bossX; b.enter = false; b.dir = -1; }
+    return;
+  }
+  b.t++; if(b.flash>0) b.flash--;
+  b.phase = b.hp < b.maxhp*0.45 ? 1 : 0;
+  // 上下浮动 + 横向巡逻（浮动幅度小，保证核心始终在玩家弹道上）
+  b.y = b.y0 + Math.sin(b.t/28)*(b.phase?7:4);
+  b.x += b.dir*(b.phase?0.85:0.55);
+  // 巡逻范围锁定在战场中央，别把玩家顶到屏幕外
+  const lo = cam.x + 110, hi = cam.x + VW - 110;
+  if(b.x < lo){ b.dir = 1; b.x = lo; }
+  if(b.x > hi){ b.dir = -1; b.x = hi; }
+  if(b.cd>0) b.cd--;
+  if(b.cd<=0){
+    const mx = b.x + b.w/2, my = b.bulY;
+    if(b.phase===0){
+      // 扇形三连（朝玩家所在半侧）
+      const base = (P.x > mx) ? 0.42 : Math.PI-0.42;
+      for(let i=-1;i<=1;i++){
+        const a = base + i*0.26;
+        ebullets.push({x:mx, y:my, vx:Math.cos(a)*1.9, vy:Math.sin(a)*1.9, dmg:1, col:'#ff5252'});
+      }
+      b.cd = 125;
+    } else {
+      // 追踪弹（伤害1）+ 单发落雷：弹幕留缺口，玩家能找空隙穿
+      const dx = P.x-mx, dy = (P.y+8)-my, d=Math.hypot(dx,dy)||1;
+      ebullets.push({x:mx, y:my, vx:dx/d*1.85, vy:dy/d*1.85, dmg:1, col:'#ff1744', big:true});
+      ebullets.push({x:b.x+b.w/2, y:b.y+b.h-2, vx:(Math.random()-0.5)*0.5, vy:1.1, dmg:1, col:'#ff8a00'});
+      b.cd = 120;
+    }
+    Sound.beep(150,0.08,'sawtooth',0.03,80);
+  }
+  // 撞玩家：只判机体最下方 1/3，其余高度可以从容跳过或站侧面打
+  if(!P.dead && P.x+5 > b.x+8 && P.x+5 < b.x+b.w-8 && P.y+8 > b.y+b.h-14 && P.y+8 < b.y+b.h) killPlayer();
+}
+function hurtBoss(d){
+  if(boss && !boss.dead){
+    boss.hp -= d; boss.flash = 3;
+    if(boss.hp<=0){ boss.hp=0; boss.dead=true; G.score += 5000; G.shake=16; Sound.boom(); }
+  }
+}
+function victory(){
+  G.state='win';
+  if(G.score>G.hi) G.hi=G.score;
+  try{ localStorage.setItem('contra_hi', String(G.hi)); }catch(e){}
+}
+
+/* ------------------------- 道具 -------------------------
+   v15：道具不再「定在天上」。每个道具都吃重力、会往下掉，落到地面 / 平台上就停住。
+   · 打敌人掉出来的装备（killEnemy 里 push）出生时带一个小上抛 + 横向微速度，
+     看起来就是「被打落、弹一下、落地」；
+   · 地图上预先摆的道具同样会落下来（摆的位置偏高，落到地上更好拿）；
+   · 掉进沟里（该 x 处没有任何地面/平台）的会一直下坠，出屏即清除。
+   判定沿用 landCheck 的思路：用「上一帧 y → 这一帧 y」跨过的那个面，
+   免得下落速度快时一帧穿过地面。 */
+const ITEM_GRAV  = 0.34;   // 道具下落重力（比玩家的 0.42 轻一点，掉得柔和些）
+const ITEM_MAXVY = 3.6;    // 下落速度上限，防一帧穿过落点
+const ITEM_FOOT  = 5;      // 道具中心到「底边」的距离（drawItems 里盒子是 y-4 .. y+5）
+
+// 找 x 这一列的落点：返回「道具中心该停在的 y」；x 处没有可站的表面则返回 null。
+function itemRestY(x, prevY, nextY){
+  let best = null;
+  const consider = (s)=>{
+    if(x < s.x || x > s.x + s.w) return;
+    const top = s.y - ITEM_FOOT;                      // 停在这，道具底边正好贴住表面
+    if(top >= prevY - 1 && top <= nextY && (best === null || top < best)) best = top;
+  };
+  for(const g of map.ground) consider(g);
+  for(const s of map.plat)   consider(s);
+  return best;
+}
+
+function updateItems(){
+  for(const it of map.items){
+    if(it.got) continue;
+    if(it.x < cam.x-40){ continue; }
+    it.t = (it.t||0) + 1;
+
+    // ① 掉落：落到地面/平台就停住（it.rest），否则一直往下
+    if(!it.rest){
+      it.vy = Math.min((it.vy||0) + ITEM_GRAV, ITEM_MAXVY);
+      if(it.vx){ it.x += it.vx; it.vx *= 0.88; if(Math.abs(it.vx) < 0.05) it.vx = 0; }
+      const prevY = it.y;
+      it.y += it.vy;
+      const rest = itemRestY(it.x, prevY, it.y);
+      if(rest !== null){ it.y = rest; it.vy = 0; it.vx = 0; it.rest = true; }
+      else if(it.y > VH + 40){ it.got = true; continue; }   // 掉沟里了，清掉
+    }
+
+    if(!P.dead && Math.abs(P.x-it.x)<11 && Math.abs(P.y+8-it.y)<13){
+      it.got = true; Sound.power();
+      if(it.kind==='1UP'){ G.lives++; pop(it.x,it.y,'1UP',PAL.yellow); }
+      else if(it.kind==='B'){ G.score += 500; pop(it.x,it.y,'+500',PAL.yellow); }
+      else if(it.kind==='S'){ P.weapon=1; pop(it.x,it.y,'散弹 SPREAD','#7cf3ff'); }
+      else if(it.kind==='L'){ P.weapon=2; pop(it.x,it.y,'激光 LASER','#7cf3ff'); }
+      else if(it.kind==='E'){ P.weapon=3; pop(it.x,it.y,'爆炸弹 BOMB','#ff6d00'); }
+    }
+  }
+}
+
+/* ------------------------- 子弹 ------------------------- */
+function updateBullets(){
+  for(let i=bullets.length-1;i>=0;i--){
+    const b = bullets[i];
+    b.x += b.vx; b.y += b.vy;
+    if(b.life) { b.life--; if(b.life<=0){ bullets.splice(i,1); continue; } }
+    let hit = false;
+    if(boss && !boss.dead){
+      const inBody = b.x>boss.x && b.x<boss.x+boss.w && b.y>boss.y && b.y<boss.y+boss.h;
+      if(inBody){
+        if(b.bomb){                                  // 爆炸弹：命中 BOSS 即爆，范围伤害
+          explodeBomb(b.x, b.y, b.dmg);
+          bullets.splice(i,1); hit = true;
+        } else {
+          // 命中弱点核心：伤害 ×3
+          const core = Math.abs(b.x - (boss.x + boss.w/2)) < 9 && Math.abs(b.y - boss.bulY) < 9;
+          hurtBoss(core ? b.dmg*3 : b.dmg);
+          Sound.hit();
+          effects.push({t:'r',x:b.x,y:b.y,r:core?3:2,life:6,col:core?'#ff8a80':b.col});
+          if(core){ G.score += 100; pop(b.x, b.y-8, '+100', '#ff8a80'); }
+          if(!b.pierce) bullets.splice(i,1); else b.dmg = 1;
+          hit = true;
+        }
+      }
+    }
+    if(hit) continue;
+    for(const e of map.enemies){
+      if(!e.active || e.dead) continue;
+      if(b.x>e.x-5 && b.x<e.x+11 && b.y>e.y-3 && b.y<e.y+16){
+        if(b.bomb){                                  // 爆炸弹：命中敌人即爆，范围伤害
+          explodeBomb(b.x, b.y, b.dmg);
+          bullets.splice(i,1); hit=true; break;
+        }
+        e.hp -= b.dmg; Sound.hit();
+        effects.push({t:'r',x:b.x,y:b.y,r:2,life:5,col:b.col});
+        if(e.hp<=0){ killEnemy(e); }
+        if(!b.pierce){ bullets.splice(i,1); hit=true; break; }
+      }
+    }
+    if(hit) continue;
+    if(b.x<cam.x-20 || b.x>cam.x+VW+20 || b.y<-20 || b.y>VH+20) bullets.splice(i,1);
+  }
+}
+function killEnemy(e){
+  e.dead = true; e.active = false; G.kills++;
+  boom(e.x+5, e.y+7, 14, '#ff9800');
+  G.score += e.type==='flyer'?300:(e.type==='turret'?500:200);
+  Sound.boom(); G.shake = Math.max(G.shake, 4);
+  if(Math.random()<0.09){
+    // v15：掉落时给个小上抛 + 横向微速度，落地上停住（重力在 updateItems 里）
+    map.items.push({x:e.x, y:e.y-4, vx:(Math.random()-0.5)*0.9, vy:-1.4,
+                    kind:['S','L','E','B','1UP'][Math.floor(Math.random()*5)], got:false});
+  }
+}
+/* 爆炸弹命中：大范围爆炸，对半径内所有敌人与 BOSS 造成范围伤害（dmg 各吃一次） */
+function explodeBomb(x,y,dmg){
+  boom(x,y,28,'#ff6d00');                                      // 爆炸粒子
+  effects.push({t:'r', x:x, y:y, r:7, life:12, col:'#ffeb3b'}); // 爆闪
+  Sound.boom(); G.shake = Math.max(G.shake, 9);                // 震屏
+  const R = 34;                                                // 爆炸半径
+  for(const e of map.enemies){
+    if(!e.active || e.dead) continue;
+    const cx = e.x+5, cy = e.y+7;
+    if((cx-x)*(cx-x) + (cy-y)*(cy-y) < R*R){
+      e.hp -= dmg; Sound.hit();
+      if(e.hp<=0) killEnemy(e);
+    }
+  }
+  if(boss && !boss.dead){
+    const bcx = boss.x + boss.w/2, bcy = boss.y + boss.h/2;
+    if((bcx-x)*(bcx-x) + (bcy-y)*(bcy-y) < R*R) hurtBoss(dmg);
+  }
+}
+function updateEBullets(){
+  for(let i=ebullets.length-1;i>=0;i--){
+    const b = ebullets[i];
+    b.x += b.vx; b.y += b.vy;
+    // 判定框比精灵略小（像素游戏惯例：擦弹不死）
+    const hx = P.x+5, hy = P.duck ? P.y+12 : P.y+9;
+    const hr = P.duck ? 7 : 6;
+    if(!P.dead && Math.abs(b.x-hx)<hr && Math.abs(b.y-hy)<hr){
+      ebullets.splice(i,1); killPlayer(); continue;
+    }
+    if(b.x<cam.x-24 || b.x>cam.x+VW+24 || b.y<-24 || b.y>VH+30) ebullets.splice(i,1);
+  }
+}
+
+/* ------------------------- 特效 ------------------------- */
+function updateFX(){
+  for(let i=effects.length-1;i>=0;i--){
+    const e = effects[i];
+    e.life--;
+    if(e.t==='p'){ e.x+=e.vx; e.y+=e.vy; e.vy+=0.12; if(e.life<=0) effects.splice(i,1); }
+    else if(e.t==='r'){ e.r += 0.9; if(e.life<=0) effects.splice(i,1); }
+    else if(e.t==='t'){ e.y -= 0.5; if(e.life<=0) effects.splice(i,1); }
+  }
+  if(G.shake>0) G.shake--;
+  if(G.bannerT>0) G.bannerT--;
+}
+
+/* ------------------------- 主循环 ------------------------- */
+function update(){
+  G.t++;
+  if(G.state==='play'){
+    updatePlayer();
+    const _tgt = clamp(P.x - VW*0.42, 0, Math.max(0,map.w - VW));
+    if(cam.lock != null){
+      cam.x = cam.lock;
+      // 空降落地后：非BOSS战、玩家向右移动离开左端时解锁，用短时平滑过渡，画面不跳不闪
+      if(!P.drop && !P.dead && !boss && P.x > cam.lock + 40){ cam.lock = null; cam.smooth = 30; }
+    } else if(cam.smooth > 0){
+      cam.smooth--;
+      cam.x += (_tgt - cam.x) * 0.15;
+    } else {
+      cam.x = _tgt;
+    }
+    spawnEnemies();
+    updateEnemies();
+    updateItems();
+    updateBoss();
+    updateBullets();
+    updateEBullets();
+    updateFX();
+  } else {
+    updateFX();
+  }
+}
+
+/* ------------------------- 绘制 ------------------------- */
+function rect(x,y,w,h,c){ ctx.fillStyle=c; ctx.fillRect(Math.round(x),Math.round(y),Math.round(w),Math.round(h)); }
+function text(t,x,y,c,size,align){
+  ctx.fillStyle = c||'#fff';
+  ctx.font = (size||8)+'px "Courier New",monospace';
+  ctx.textAlign = align||'left';
+  ctx.fillText(t, Math.round(x), Math.round(y));
+}
+
+let SKY_G = null;
+function skyGradient(){
+  // 渐变色只依赖常量 VH/PAL，一次性创建并缓存，避免每帧 createLinearGradient 产生 GC
+  if(!SKY_G){
+    SKY_G = ctx.createLinearGradient(0,0,0,VH);
+    SKY_G.addColorStop(0, PAL.sky1); SKY_G.addColorStop(0.62, PAL.sky2); SKY_G.addColorStop(1,'#170f26');
+  }
+  return SKY_G;
+}
+function drawSky(){
+  ctx.fillStyle = skyGradient(); ctx.fillRect(0,0,VW,VH);
+  // 云（暗色阴云，压暗氛围）
+  for(let i=0;i<9;i++){
+    const cx = ((i*173 - cam.x*0.28) % (VW+120) + (VW+120)) % (VW+120) - 60;
+    const cy = 18 + (i*37)%54;
+    const s = 0.6 + (i%3)*0.28;
+    ctx.fillStyle = 'rgba(48,40,68,.5)';
+    ctx.beginPath();
+    ctx.arc(cx, cy, 8*s, 0, 7); ctx.arc(cx+10*s, cy-3*s, 10*s, 0, 7);
+    ctx.arc(cx+22*s, cy, 7*s, 0, 7); ctx.arc(cx+11*s, cy+4*s, 11*s, 0, 7);
+    ctx.fill();
+  }
+  // 远山（两层视差，暗色山影）
+  for(let L=0;L<2;L++){
+    const par = L? 0.42 : 0.22, base = L? 168 : 148;
+    const col = L? PAL.hill2 : PAL.hill;
+    ctx.fillStyle = col;
+    ctx.beginPath(); ctx.moveTo(0,VH);
+    const off = cam.x*par;
+    for(let x=-40;x<=VW+40;x+=20){
+      const wx = x+off;
+      const yv = base - Math.abs(Math.sin(wx/90 + L*2))*26 - Math.sin(wx/47)*5;
+      ctx.lineTo(x, yv);
+    }
+    ctx.lineTo(VW+40,VH); ctx.closePath(); ctx.fill();
+  }
+  // 血月：暗红圆月 + 血色光晕，悬浮在阴云之上
+  const mx = ((VW*0.70 - cam.x*0.10) % (VW+90) + (VW+90)) % (VW+90) - 45;
+  const my = 44;
+  ctx.fillStyle = 'rgba(168,36,36,.92)';
+  ctx.beginPath(); ctx.arc(mx, my, 21, 0, 7); ctx.fill();
+  ctx.fillStyle = 'rgba(230,90,70,.22)';
+  ctx.beginPath(); ctx.arc(mx, my, 13, 0, 7); ctx.fill();
+  ctx.fillStyle = 'rgba(20,20,26,.25)';
+  ctx.beginPath(); ctx.arc(mx-5, my-4, 4, 0, 7); ctx.fill();   // 月面暗斑
+}
+function drawGround(){
+  // 先铺一层深渊底色，缺口处自然显出"沟壑"（暗夜深黑）
+  rect(0, 168, VW, VH-168, '#06060c');
+  rect(0, 168, VW, 4, '#1a1018');
+  for(const g of map.ground){
+    if(g.x > cam.x+VW+10 || g.x+g.w < cam.x-10) continue;
+    rect(g.x-cam.x, g.y, g.w, VH-g.y, PAL.dirt);
+    rect(g.x-cam.x, g.y, g.w, 5, PAL.dirt2);
+    rect(g.x-cam.x, g.y-3, g.w, 3, PAL.grass);
+    for(let x=0;x<g.w;x+=8) rect(g.x-cam.x+x, g.y+9+(x%3)*5, 3,2,'rgba(0,0,0,.18)');
+  }
+  for(const s of map.plat){
+    if(s.x > cam.x+VW+10 || s.x+s.w < cam.x-10) continue;
+    rect(s.x-cam.x, s.y, s.w, 6, PAL.stone);
+    rect(s.x-cam.x, s.y+6, s.w, 3, '#6b6b6b');
+    rect(s.x-cam.x, s.y, s.w, 2, '#d0d4d8');
+    for(let x=4;x<s.w;x+=10) rect(s.x-cam.x+x, s.y+10, 4,4,'rgba(0,0,0,.22)');
+  }
+}
+function drawPlayer(){
+  if(!P.drop && P.spawnT>0 && (P.spawnT>>1)%2===0) return;   // 复活闪烁（空降入场不闪）
+  if(P.inv>0 && (G.t>>2)%2===0 && P.inv<90) return;
+  const sp = P.duck ? P_DUCK : (P.onGround ? (P.frame?P_RUN1:P_RUN0) : P_JUMP);
+  const flip = P.dir<0;
+  const px = P.x-cam.x, py = P.y;
+  if(P.dead) return;
+  drawSprite(sp, px, py, PAL_P, flip, 1);
+  // 手臂 + 枪（按瞄准角）
+  // 注意：aimAngle() 返回的已经是「世界角度」，这里不能再按 P.dir 加 PI，
+  // 否则朝左时枪口会被翻到右边、和人物朝向对调（子弹方向也会跟着错）。
+  if(!P.duck || held('fire')){
+    const ang = aimAngle()*Math.PI/180;
+    // 锚点以「躯干中线」为镜像轴（见 gunAnchorOff 注释），与 fire() 共用同一套算法
+    const sx = px + gunAnchorOff(ang), sy = py + gunAnchorY();
+    ctx.save();
+    ctx.translate(sx, sy); ctx.rotate(ang);
+    const col = WEAPONS[P.weapon].col;
+    rect(0,-2,5,4, PAL_P.S);         // 手
+    if(P.weapon===2) rect(4,-2,7,3, col);
+    else rect(4,-2,7,4, P.weapon===1?'#8a8a8a':(P.weapon===3?col:'#3b3b3b'));   // 爆炸弹枪身橙
+    ctx.restore();
+  }
+}
+function drawEnemies(){
+  for(const e of map.enemies){
+    if(!e.active || e.dead) continue;
+    const x = e.x-cam.x, y = e.y;
+    if(x<-30||x>VW+30) continue;
+    if(e.type==='soldier'){
+      drawSprite(e.anim%14<7?E_RUN0:E_RUN1, x, y, PAL_E, e.dir>0, 1);
+      if(e.cd<16) rect(x+2, y-3, 2, 3, '#ffd23f');    // 警示灯
+    } else if(e.type==='turret'){
+      rect(x-1, y+8, 13, 4, '#5d4037');
+      rect(x, y, 11, 10, '#6d4c41');
+      rect(x+2, y+2, 7, 3, '#333');
+      const a = Math.atan2((P.y+8)-(y+4), (P.x-cam.x)-(x+5));
+      ctx.save(); ctx.translate(x+5,y+4); ctx.rotate(a);
+      rect(0,-2,10,4,'#424242'); rect(9,-3,3,6,'#8d6e63');
+      ctx.restore();
+    } else {
+      rect(x, y, 11, 6, '#5d6d7e'); rect(x+2, y-3, 7, 3, '#90a4ae');
+      rect(x+4, y+6, 2, 3, '#455a64');
+      // 旋翼
+      if(G.t%4<2) rect(x-2, y-5, 15, 1, 'rgba(255,255,255,.55)');
+      rect(x+11, y+2, 4, 2, '#8d6e63');
+    }
+  }
+}
+function drawBoss(){
+  if(!boss) return;
+  const b = boss, x = b.x-cam.x, y = b.y, w = b.w, h = b.h;
+  const body = b.flash>0 ? '#fff' : '#546e7a';
+  // 底座 + 履带
+  rect(x, y, w, h, body);
+  rect(x, y, w, 6, '#37474f');
+  rect(x+1, y+h-11, 10, 11, '#1e272c');
+  rect(x+w-11, y+h-11, 10, 11, '#1e272c');
+  // 炮塔（顶部）
+  rect(x+6, y+8, 12, 9, '#455a64');
+  ctx.save(); ctx.translate(x+w/2, y+12);
+  const pa = Math.sin(b.t/20)*0.45 + (b.phase?0.3:0);
+  ctx.rotate(b.dir<0 ? pa+Math.PI : pa);
+  rect(0,-3,18,6,'#78909c'); rect(16,-4,5,8,'#b0bec5');
+  ctx.restore();
+  // 主炮口（发射点）
+  const mx = x + w/2;
+  rect(mx-6, b.bulY, 12, 9, '#37474f');
+  // 弱点核心（正对弹道，命中判定就在这一块）
+  const pulse = b.phase ? ((G.t>>2)%2===0) : true;
+  rect(mx-7, b.bulY-6, 14, 13, pulse ? '#ff1744' : '#b71c1c');
+  rect(mx-4, b.bulY-3, 8, 7, pulse ? '#ff8a80' : '#ef9a9a');
+  // 侧装甲缝
+  for(let i=0;i<4;i++){ rect(x+4+i*12, y+2, 2, 4, '#90a4ae'); rect(x+4+i*12, y+h-4, 2, 3, '#78909c'); }
+  // 受损冒烟
+  if(b.hp < b.maxhp*0.6 && (G.t>>1)%3===0)
+    rect(x+4+((G.t*3)%(w-8)), y-2, 3, 3, 'rgba(80,80,80,.7)');
+  // 血条
+  const bw = 160;
+  rect(VW/2-bw/2-1, 15, bw+2, 6, 'rgba(0,0,0,.6)');
+  rect(VW/2-bw/2, 16, Math.max(0, Math.round(bw*b.hp/b.maxhp)), 4, b.phase? '#ff1744':'#ff5252');
+  text('要塞  ' + Math.max(0,b.hp) + '/' + b.maxhp, VW/2, 27, '#ffcdd2', 7, 'center');
+}
+function drawBullets(){
+  for(const b of bullets){
+    rect(b.x-cam.x-1, b.y-1, b.pierce?5:3, b.pierce?3:3, b.col);
+    if(b.pierce) rect(b.x-cam.x-3, b.y, 3, 1, 'rgba(255,255,255,.5)');
+  }
+  for(const b of ebullets){
+    const r = b.big?3:2;
+    ctx.fillStyle = b.col;
+    ctx.beginPath(); ctx.arc(b.x-cam.x, b.y, r, 0, 7); ctx.fill();
+  }
+}
+function drawItems(){
+  for(const it of map.items){
+    if(it.got || it.x<cam.x-20) continue;
+    const x = it.x-cam.x, y = it.y;
+    const blink = it.kind==='1UP' && (G.t>>2)%2===0;
+    if(blink) continue;
+    if(it.kind==='1UP'){ rect(x-4,y-4,10,9,'#2e7d32'); rect(x-1,y-2,4,5,'#fff'); }
+    else if(it.kind==='B'){ rect(x-4,y-4,10,9,'#c0c0c0'); rect(x-1,y-2,4,5,'#ffd23f'); }
+    else { rect(x-5,y-4,11,9, '#1a237e'); text(it.kind, x, y+3, it.kind==='S'?'#ffd23f':'#7cf3ff', 8, 'center'); }
+  }
+}
+function drawFX(){
+  for(const e of effects){
+    const x = e.x-cam.x;
+    if(e.t==='p'){ ctx.globalAlpha = Math.min(1, e.life/18); rect(x, e.y, e.r, e.r, e.col); ctx.globalAlpha=1; }
+    else if(e.t==='r'){ ctx.globalAlpha = Math.max(0,e.life/9); rect(x-e.r, e.y-e.r, e.r*2, e.r*2, e.col); ctx.globalAlpha=1; }
+    else if(e.t==='t'){ ctx.globalAlpha = Math.min(1, e.life/26); text(e.txt, x, e.y, e.col, 7, 'center'); ctx.globalAlpha=1; }
+  }
+}
+function drawHUD(){
+  rect(0,0,VW,13,'rgba(0,0,0,.45)');
+  // 命数小人
+  for(let i=0;i<Math.min(G.lives,6);i++){
+    drawSprite(P_RUN0, 4+i*10, 2, PAL_P, false, 1);
+  }
+  if(G.lives>6) text('x'+G.lives, 4+6*10+2, 10, '#fff', 7);
+  text('SCORE ' + String(G.score).padStart(6,'0'), 96, 10, PAL.yellow, 8);
+  // 武器
+  const w = WEAPONS[P.weapon];
+  rect(VW-64, 3, 9, 8, '#1a237e'); text(w.name, VW-59.5, 10, w.col, 8, 'center');
+  text('W', VW-51, 10, '#fff', 8);
+  text('BOSS' , 8, 22, 'rgba(255,255,255,.5)', 6);
+  // 进度条
+  const pw = VW-16;
+  rect(8, VH-6, pw, 3, 'rgba(0,0,0,.4)');
+  rect(8, VH-6, Math.round(pw*clamp(P.x/map.w,0,1)), 3, PAL.yellow);
+}
+function centerBox(title, lines, foot){
+  rect(0,0,VW,VH,'rgba(0,0,0,.72)');
+  text(title, VW/2, 82, PAL.yellow, 16, 'center');
+  ctx.fillStyle = 'rgba(255,255,255,.6)'; ctx.fillRect(VW/2-70, 90, 140, 1);
+  lines.forEach((l,i)=> text(l, VW/2, 116 + i*13, '#fff', 8, 'center'));
+  if(foot) text(foot, VW/2, VH-26, '#ffd23f', 8, 'center');
+}
+function render(){
+  const sh = G.shake>0 ? (G.shake%2? 1:-1)*Math.min(3,G.shake) : 0;
+  ctx.save();
+  ctx.translate(sh,0);
+  drawSky();
+  drawGround();
+  drawItems();
+  drawEnemies();
+  drawBoss();
+  drawPlayer();
+  drawBullets();
+  drawFX();
+  ctx.restore();
+  drawHUD();
+
+  if(G.bannerT>0){
+    const a = Math.min(1, G.bannerT/40);
+    ctx.globalAlpha = a;
+    rect(VW/2-92, 34, 184, 14, 'rgba(0,0,0,.6)');
+    text(G.banner, VW/2, 45, '#fff', 9, 'center');
+    ctx.globalAlpha = 1;
+  }
+  if(G.state==='title'){
+    rect(0,0,VW,VH,'rgba(0,0,0,.68)');
+    text('魂 斗 罗', VW/2, 62, PAL.red, 26, 'center');
+    text('· 铁 血 战 区 ·', VW/2, 84, PAL.yellow, 10, 'center');
+    text('K / Z / 空格 = 跳     J / X = 射击', VW/2, 118, '#fff', 8, 'center');
+    text('↑↓←→ 或 WASD = 移动 / 瞄准', VW/2, 130, '#fff', 8, 'center');
+    text('↑ + ←/→ 斜射    ↓ + ←/→ 蹲射', VW/2, 142, 'rgba(255,255,255,.65)', 7, 'center');
+    text('手机：左半屏按住滑动 = 方向，右下 跳 / 射 / 蹲', VW/2, 156, 'rgba(255,255,255,.65)', 7, 'center');
+    if((G.t>>4)%2===0) text('按 ENTER 或点击画面 开始', VW/2, 186, PAL.yellow, 10, 'center');
+    text('最高分 ' + G.hi, VW/2, 210, 'rgba(255,255,255,.5)', 8, 'center');
+  }
+  else if(G.state==='pause'){
+    rect(0,0,VW,VH,'rgba(0,0,0,.6)');
+    text('暂 停', VW/2, 118, '#fff', 18, 'center');
+    text('点击画面或按 P 继续', VW/2, 138, 'rgba(255,255,255,.7)', 8, 'center');
+  }
+  else if(G.state==='over'){
+    centerBox('MISSION FAILED', ['得分 '+G.score+'   击破 '+G.kills, '最高分 '+G.hi], '按 ENTER 重新出击');
+  }
+  else if(G.state==='win'){
+    centerBox('MISSION COMPLETE', ['要塞已摧毁！', '得分 '+G.score+'   击破 '+G.kills+'   剩余命 '+Math.max(0,G.lives), '最高分 '+G.hi], '按 ENTER 再来一局');
+  }
+}
+
+/* ------------------------- 初始化 ------------------------- */
+function init(){
+  cv = document.getElementById('game');
+  cv.width = VW; cv.height = VH;
+  ctx = cv.getContext('2d');
+  ctx.imageSmoothingEnabled = false;
+  try{ G.hi = parseInt(localStorage.getItem('contra_hi')||'0',10)||0; }catch(e){ G.hi=0; }
+
+  // 点击画面：标题/结束 → 开始；暂停 → 继续
+  cv.addEventListener('pointerdown', e=>{
+    e.preventDefault(); Sound.init();
+    if(G.state==='title'||G.state==='over'||G.state==='win') startGame();
+    else if(G.state==='pause') togglePause();
+  });
+  // 启动页：全屏 + 锁横屏 + 开局（bootGame 也要用 layout，所以这些都在模块层）
+  if(bootEl){
+    // 只挂 click：额外挂 touchend + preventDefault 会把浏览器补发的 click 吃掉，
+    // 结果是「怎么点都没反应」。click 在移动端同样属于用户手势，能满足全屏要求。
+    bootEl.addEventListener('click', ()=>{ if(!bootEl.classList.contains('gone')) bootGame(); });
+  }
+
+  layout();
+
+  let acc = 0, last = performance.now();
+  function loop(now){
+    let dt = Math.min(50, now-last); last = now;
+    pollPad();                       // 每帧：跳跃冲量前进一步 + 触摸状态自愈（见 pollPad）
+    acc += dt;
+    const step = 1000/60;
+    // 逻辑/渲染包一层 try：个别数据异常只丢这一帧，不冻结整个游戏循环
+    try{
+      let n = 0;
+      while(acc >= step && n < 3){ update(); acc -= step; n++; }
+      if(acc > step*3) acc = 0;
+      render();
+    }catch(err){
+      acc = 0;
+    }
+    requestAnimationFrame(loop);
+  }
+  // 预生成一张地图用于标题背景
+  map = buildMap();
+  cam = {x:0,y:0};
+  bullets=[]; ebullets=[]; effects=[];
+  P = {x:70,y:180,w:10,h:16,vx:0,vy:0,dir:1,onGround:false,frame:0,anim:0,duck:false,
+       jumpHold:0,fireCd:0,weapon:0,inv:0,dead:false,deadT:0,spawnT:0,air:0,
+       jumpReq:false,wasJump:false};
+  requestAnimationFrame(loop);
+}
+if(document.readyState==='loading') addEventListener('DOMContentLoaded', init); else init();
+</script>
+</body>
+</html>
