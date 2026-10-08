@@ -8,9 +8,10 @@
   :root{color-scheme:dark}
   html,body{
     margin:0;height:100%;
-    background:radial-gradient(1300px 760px at 50% 36%,#24374e,#131c28 72%);
+    background:linear-gradient(135deg,#0a2e38 0%,#0f3a46 55%,#144a5a 100%);
     display:flex;align-items:center;justify-content:center;overflow:hidden;
-    font-family:"Segoe UI","PingFang SC","Microsoft YaHei",system-ui,sans-serif;
+    font-family:-apple-system,"PingFang SC","Microsoft YaHei",system-ui,sans-serif;
+    padding-top:56px;
   }
   .stage{
     width:min(97vw,1180px);border-radius:20px;overflow:hidden;position:relative;
@@ -18,9 +19,25 @@
   }
   svg{display:block;width:100%;height:auto;cursor:pointer;user-select:none;-webkit-tap-highlight-color:transparent}
   svg text{font-family:"Segoe UI","PingFang SC","Microsoft YaHei",system-ui,sans-serif}
+  /* ===== 老杨游戏站 · 统一站点栏 ===== */
+  .site-bar{position:fixed;top:0;left:0;right:0;height:44px;z-index:9999;
+    display:flex;align-items:center;justify-content:space-between;padding:0 14px;
+    box-sizing:border-box;
+    background:linear-gradient(135deg,rgba(10,46,56,.94),rgba(18,64,80,.94));
+    border-bottom:1px solid rgba(126,224,255,.28);
+    backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);
+    font-family:-apple-system,"PingFang SC","Microsoft YaHei",system-ui,sans-serif;}
+  .site-bar .site-name{color:#9fd8ec;font-size:13px;letter-spacing:2px;font-weight:600;white-space:nowrap}
+  .back-home{display:inline-flex;align-items:center;gap:6px;color:#e8f4f8;text-decoration:none;
+    font-family:-apple-system,"PingFang SC","Microsoft YaHei",system-ui,sans-serif;
+    font-size:14px;font-weight:600;line-height:1;
+    background:rgba(255,255,255,.08);border:1px solid rgba(126,224,255,.38);
+    border-radius:999px;padding:8px 14px;transition:.15s;cursor:pointer}
+  .back-home:hover{background:rgba(126,224,255,.18);border-color:#7ee0ff;color:#fff}
 </style>
 </head>
 <body>
+<nav class="site-bar"><a class="back-home" href="./index.html">← 返回主页</a><span class="site-name">老杨游戏站</span></nav>
 <div class="stage">
 <svg id="scene-svg" viewBox="0 0 1000 600" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="一只鹈鹕骑自行车兜风的动画">
   <title>鹈鹕骑自行车</title>
