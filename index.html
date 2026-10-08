@@ -6,10 +6,25 @@
 <title>老杨游戏站 · OpenClaw</title>
 <style>
   * { margin:0; padding:0; box-sizing:border-box; }
+  /* ===== 老杨游戏站 · 统一站点栏 ===== */
+  .site-bar{position:fixed;top:0;left:0;right:0;height:44px;z-index:9999;
+    display:flex;align-items:center;justify-content:space-between;padding:0 14px;
+    box-sizing:border-box;
+    background:linear-gradient(135deg,rgba(10,46,56,.94),rgba(18,64,80,.94));
+    border-bottom:1px solid rgba(126,224,255,.28);
+    backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);
+    font-family:-apple-system,"PingFang SC","Microsoft YaHei",system-ui,sans-serif;}
+  .site-bar .site-name{color:#9fd8ec;font-size:13px;letter-spacing:2px;font-weight:600;white-space:nowrap}
+  .back-home{display:inline-flex;align-items:center;gap:6px;color:#e8f4f8;text-decoration:none;
+    font-family:-apple-system,"PingFang SC","Microsoft YaHei",system-ui,sans-serif;
+    font-size:14px;font-weight:600;line-height:1;
+    background:rgba(255,255,255,.08);border:1px solid rgba(126,224,255,.38);
+    border-radius:999px;padding:8px 14px;transition:.15s;cursor:pointer}
+  .back-home:hover{background:rgba(126,224,255,.18);border-color:#7ee0ff;color:#fff}
   body { font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;
          background:linear-gradient(135deg,#0f2027,#203a43,#2c5364);
          color:#e8eef2; min-height:100vh; display:flex; flex-direction:column;
-         align-items:center; justify-content:center; padding:40px; }
+         align-items:center; justify-content:center; padding:56px 40px 40px; }
   h1 { font-size:30px; letter-spacing:2px; margin-bottom:8px; }
   .sub { color:#9fb0bb; margin-bottom:34px; font-size:15px; }
   .grid { display:flex; gap:22px; flex-wrap:wrap; justify-content:center; }
@@ -24,6 +39,7 @@
 </style>
 </head>
 <body>
+  <nav class="site-bar"><a class="back-home" href="./index.html">← 返回主页</a><span class="site-name">老杨游戏站</span></nav>
   <h1>老杨游戏站</h1>
   <div class="sub">由 GitHub Pages 托管</div>
   <div class="grid">
