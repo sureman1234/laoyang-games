@@ -11,10 +11,26 @@ html,body{margin:0;padding:0;background:#000;height:100%;overflow:hidden;touch-a
 #wrap{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:#000}
 canvas{image-rendering:pixelated;image-rendering:crisp-edges}
 #hint{position:fixed;bottom:4px;width:100%;text-align:center;color:rgba(255,255,255,.35);font:11px sans-serif;pointer-events:none}
-#mute{position:fixed;top:8px;right:10px;z-index:10;background:rgba(0,0,0,.4);color:#aab;border:1px solid #445;border-radius:4px;font:12px sans-serif;padding:4px 9px;cursor:pointer}
+#mute{position:fixed;top:58px;right:10px;z-index:10;background:rgba(0,0,0,.4);color:#aab;border:1px solid #445;border-radius:4px;font:12px sans-serif;padding:4px 9px;cursor:pointer}
+/* ===== 老杨游戏站 · 统一站点栏 ===== */
+.site-bar{position:fixed;top:0;left:0;right:0;height:44px;z-index:9999;
+  display:flex;align-items:center;justify-content:space-between;padding:0 14px;
+  box-sizing:border-box;
+  background:linear-gradient(135deg,rgba(10,46,56,.94),rgba(18,64,80,.94));
+  border-bottom:1px solid rgba(126,224,255,.28);
+  backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);
+  font-family:-apple-system,"PingFang SC","Microsoft YaHei",system-ui,sans-serif;}
+.site-bar .site-name{color:#9fd8ec;font-size:13px;letter-spacing:2px;font-weight:600;white-space:nowrap}
+.back-home{display:inline-flex;align-items:center;gap:6px;color:#e8f4f8;text-decoration:none;
+  font-family:-apple-system,"PingFang SC","Microsoft YaHei",system-ui,sans-serif;
+  font-size:14px;font-weight:600;line-height:1;
+  background:rgba(255,255,255,.08);border:1px solid rgba(126,224,255,.38);
+  border-radius:999px;padding:8px 14px;transition:.15s;cursor:pointer}
+.back-home:hover{background:rgba(126,224,255,.18);border-color:#7ee0ff;color:#fff}
 </style>
 </head>
 <body>
+<nav class="site-bar"><a class="back-home" href="./index.html">← 返回主页</a><span class="site-name">老杨游戏站</span></nav>
 <div id="wrap"><canvas id="cv" width="320" height="180"></canvas></div>
 <button id="mute">&#9834;</button>
 <div id="hint">左侧拖动移动 · 上滑/点左跳跃 · 右侧点击攻击</div>
