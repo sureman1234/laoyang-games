@@ -72,6 +72,9 @@ html,body{width:100%;height:100%;background:#000;overflow:hidden;font-family:"Co
   align-items:center;justify-content:center;gap:26px;color:#fff;cursor:pointer;
   -webkit-user-select:none;user-select:none}
 #boot.gone{display:none}
+#bootHome{position:absolute;top:14px;left:16px;color:#9fb0bb;font-size:13px;text-decoration:none;
+  letter-spacing:1px;cursor:pointer;z-index:46;padding:4px}
+#bootHome:hover{color:#7ee0ff}
 #bootTitle{font-size:30px;letter-spacing:8px;font-weight:bold;color:#e53935;
   text-shadow:3px 3px 0 #7f0000,0 0 22px rgba(229,57,53,.6)}
 #bootSub{font-size:13px;opacity:.7;letter-spacing:2px;margin-top:-14px}
@@ -90,6 +93,7 @@ html,body{width:100%;height:100%;background:#000;overflow:hidden;font-family:"Co
     <div class="tbtn" id="btnSound">♪ 开</div>
     <div class="tbtn" id="btnFeel">右指调节</div>
     <div class="tbtn" id="btnPause">Ⅱ 暂停</div>
+    <div class="tbtn" id="btnHome">⌂ 主页</div>
   </div>
 
   <!-- 左半屏：整块透明方向触摸区（按下即定控制原点，滑动判方向）。
@@ -105,6 +109,7 @@ html,body{width:100%;height:100%;background:#000;overflow:hidden;font-family:"Co
 
   <!-- 启动页：点一下 = 全屏 + 横屏 + 直接开局（横屏/全屏必须在用户手势里调） -->
   <div id="boot">
+    <div id="bootHome">← 返回主页</div>
     <div id="bootTitle">魂 斗 罗</div>
     <div id="bootSub">铁 血 战 区</div>
     <div id="bootGo">▶ 开 始 游 戏</div>
@@ -724,6 +729,12 @@ function closeFeel(){
   if(feelResume){ feelResume=false; togglePause(); }   // 关闭后恢复游玩
 }
 document.getElementById('btnFeel').addEventListener('click', ()=>{ Sound.init(); openFeel(); });
+// 返回主页：HUD 右上角按钮 + 启动页左上角链接，均跳回游戏站主页
+document.getElementById('btnHome').addEventListener('click', ()=>{ location.href='./index.html'; });
+document.getElementById('bootHome').addEventListener('click', (e)=>{
+  e.stopPropagation();            // 不触发启动页的"点击开始全屏"
+  location.href='./index.html';
+});
 feelBtns.forEach(b=>b.addEventListener('click', ()=>{
   FEEL.jumpVel = parseFloat(b.dataset.v);
   try{ localStorage.setItem('contra_feel_jumpVel', String(FEEL.jumpVel)); }catch(e){}
