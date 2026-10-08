@@ -29,7 +29,7 @@
     box-shadow:0 8px 30px rgba(0,0,0,.45)}
 
   /* 顶部状态栏 */
-  #topbar{position:absolute;top:14px;left:14px;display:flex;gap:6px;align-items:stretch;pointer-events:auto}
+  #topbar{position:absolute;top:62px;left:14px;display:flex;gap:6px;align-items:stretch;pointer-events:auto}
   .stat{padding:8px 14px;min-width:92px}
   .stat .k{font-size:11px;color:var(--sub);letter-spacing:.5px}
   .stat .v{font-size:18px;font-weight:600;margin-top:2px;font-variant-numeric:tabular-nums}
@@ -38,7 +38,7 @@
   #clock .v{font-size:17px}
 
   /* 右上 速度控制 */
-  #ctrl{position:absolute;top:14px;right:14px;display:flex;gap:6px;pointer-events:auto}
+  #ctrl{position:absolute;top:62px;right:14px;display:flex;gap:6px;pointer-events:auto}
   .btn{padding:8px 12px;border-radius:10px;background:var(--panel2);border:1px solid var(--line);
     color:var(--txt);font-size:13px;cursor:pointer;transition:.15s;white-space:nowrap}
   .btn:hover{background:#2c3648;border-color:rgba(255,255,255,.2)}
@@ -115,9 +115,26 @@
     #guide{width:min(88vw,300px);top:64px;max-height:44vh;touch-action:pan-y}
     #toolbar{max-width:94vw}
     #ctrl{max-width:62vw;flex-wrap:wrap;justify-content:flex-end} }
+
+  /* ===== 老杨游戏站 · 统一站点栏 ===== */
+  .site-bar{position:fixed;top:0;left:0;right:0;height:44px;z-index:9999;
+    display:flex;align-items:center;justify-content:space-between;padding:0 14px;
+    box-sizing:border-box;
+    background:linear-gradient(135deg,rgba(10,46,56,.94),rgba(18,64,80,.94));
+    border-bottom:1px solid rgba(126,224,255,.28);
+    backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);
+    font-family:-apple-system,"PingFang SC","Microsoft YaHei",system-ui,sans-serif;}
+  .site-bar .site-name{color:#9fd8ec;font-size:13px;letter-spacing:2px;font-weight:600;white-space:nowrap}
+  .back-home{display:inline-flex;align-items:center;gap:6px;color:#e8f4f8;text-decoration:none;
+    font-family:-apple-system,"PingFang SC","Microsoft YaHei",system-ui,sans-serif;
+    font-size:14px;font-weight:600;line-height:1;
+    background:rgba(255,255,255,.08);border:1px solid rgba(126,224,255,.38);
+    border-radius:999px;padding:8px 14px;transition:.15s;cursor:pointer}
+  .back-home:hover{background:rgba(126,224,255,.18);border-color:#7ee0ff;color:#fff}
 </style>
 </head>
 <body>
+<nav class="site-bar"><a class="back-home" href="../index.html">← 返回主页</a><span class="site-name">老杨游戏站</span></nav>
 <canvas id="scene"></canvas>
 
 <div id="hud">
