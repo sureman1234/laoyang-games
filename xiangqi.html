@@ -6,7 +6,7 @@
 <title>中国象棋 - 电脑对弈</title>
 <style>
 * { margin:0; padding:0; box-sizing:border-box; }
-body { background:linear-gradient(135deg,#2c1810 0%,#4a2c1a 100%); min-height:100vh; display:flex; justify-content:center; align-items:center; font-family:"Microsoft YaHei","SimHei",sans-serif; padding:20px; }
+body { background:linear-gradient(135deg,#0a2e38 0%,#0f3a46 55%,#144a5a 100%); min-height:100vh; display:flex; justify-content:center; align-items:center; font-family:-apple-system,"PingFang SC","Microsoft YaHei",system-ui,sans-serif; padding:56px 20px 20px; }
 .game-container { background:linear-gradient(135deg,#d4a056 0%,#c4913e 100%); border-radius:16px; padding:30px; box-shadow:0 20px 60px rgba(0,0,0,0.6),inset 0 1px 0 rgba(255,255,255,0.2); border:3px solid #8b6914; max-width:100%; }
 .game-layout { display:flex; gap:24px; align-items:flex-start; }
 .board-wrapper canvas { display:block; border-radius:8px; box-shadow:inset 0 0 20px rgba(0,0,0,0.3); max-width:100%; height:auto; }
@@ -45,16 +45,32 @@ body { background:linear-gradient(135deg,#2c1810 0%,#4a2c1a 100%); min-height:10
 .thinking { animation:pulse 1s infinite; }
 /* ===== 移动端适配：竖屏堆叠 + 棋盘随屏幕等比缩放 ===== */
 @media (max-width:680px){
-  body { align-items:flex-start; padding:10px; }
+  body { align-items:flex-start; padding:66px 10px 10px; }
   .game-container { padding:16px; }
   .game-layout { flex-direction:column; align-items:center; gap:16px; }
   .board-wrapper { width:100%; max-width:100%; }
   .board-wrapper canvas { width:100%; }
   .sidebar { width:100%; }
 }
+/* ===== 老杨游戏站 · 统一站点栏 ===== */
+.site-bar{position:fixed;top:0;left:0;right:0;height:44px;z-index:9999;
+  display:flex;align-items:center;justify-content:space-between;padding:0 14px;
+  box-sizing:border-box;
+  background:linear-gradient(135deg,rgba(10,46,56,.94),rgba(18,64,80,.94));
+  border-bottom:1px solid rgba(126,224,255,.28);
+  backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);
+  font-family:-apple-system,"PingFang SC","Microsoft YaHei",system-ui,sans-serif;}
+.site-bar .site-name{color:#9fd8ec;font-size:13px;letter-spacing:2px;font-weight:600;white-space:nowrap}
+.back-home{display:inline-flex;align-items:center;gap:6px;color:#e8f4f8;text-decoration:none;
+  font-family:-apple-system,"PingFang SC","Microsoft YaHei",system-ui,sans-serif;
+  font-size:14px;font-weight:600;line-height:1;
+  background:rgba(255,255,255,.08);border:1px solid rgba(126,224,255,.38);
+  border-radius:999px;padding:8px 14px;transition:.15s;cursor:pointer}
+.back-home:hover{background:rgba(126,224,255,.18);border-color:#7ee0ff;color:#fff}
 </style>
 </head>
 <body>
+<nav class="site-bar"><a class="back-home" href="./index.html">← 返回主页</a><span class="site-name">老杨游戏站</span></nav>
 <div class="game-container">
   <div class="game-layout">
     <div class="board-wrapper"><canvas id="boardCanvas"></canvas></div>
