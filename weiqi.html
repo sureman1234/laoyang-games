@@ -13,9 +13,9 @@
   *{box-sizing:border-box}
   html,body{margin:0;padding:0}
   body{
-    background:radial-gradient(1100px 700px at 50% -15%, #1b222c 0%, var(--bg) 60%);
-    color:var(--text); min-height:100vh;
-    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+    background:radial-gradient(1100px 700px at 50% -15%, #16303c 0%, #0a2e38 60%);
+    color:var(--text); min-height:100vh; padding-top:56px;
+    font-family:-apple-system,"PingFang SC","Microsoft YaHei",system-ui,sans-serif;
     -webkit-font-smoothing:antialiased;
   }
   .app{display:flex;gap:22px;padding:20px;justify-content:center;align-items:flex-start;flex-wrap:wrap}
@@ -65,10 +65,10 @@
   ::-webkit-scrollbar{width:8px;height:8px}
   ::-webkit-scrollbar-thumb{background:#2c3542;border-radius:4px}
   ::-webkit-scrollbar-track{background:transparent}
-  .toast{position:fixed;left:50%;top:26px;transform:translateX(-50%);background:#222a35;
+  .toast{position:fixed;left:50%;top:64px;transform:translateX(-50%);background:#222a35;
          border:1px solid #3a4553;color:#e7ebf1;padding:9px 18px;border-radius:20px;font-size:13px;
          box-shadow:0 10px 30px rgba(0,0,0,.5);opacity:0;pointer-events:none;transition:.25s;z-index:99}
-  .toast.on{opacity:1;top:34px}
+  .toast.on{opacity:1;top:72px}
   .modal{position:fixed;inset:0;background:rgba(6,8,11,.72);display:none;align-items:center;justify-content:center;z-index:100;backdrop-filter:blur(3px)}
   .modal.on{display:flex}
   .modal-box{background:linear-gradient(180deg,#1c222b,#151a21);border:1px solid var(--line);border-radius:16px;
@@ -78,9 +78,25 @@
   .modal-box .sub b{color:var(--text);font-size:15px}
   .modal-actions{display:flex;gap:10px;justify-content:center}
   @media (max-width:900px){ .side{width:100%;max-width:460px} .app{padding:12px} }
+  /* ===== 老杨游戏站 · 统一站点栏 ===== */
+  .site-bar{position:fixed;top:0;left:0;right:0;height:44px;z-index:9999;
+    display:flex;align-items:center;justify-content:space-between;padding:0 14px;
+    box-sizing:border-box;
+    background:linear-gradient(135deg,rgba(10,46,56,.94),rgba(18,64,80,.94));
+    border-bottom:1px solid rgba(126,224,255,.28);
+    backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);
+    font-family:-apple-system,"PingFang SC","Microsoft YaHei",system-ui,sans-serif;}
+  .site-bar .site-name{color:#9fd8ec;font-size:13px;letter-spacing:2px;font-weight:600;white-space:nowrap}
+  .back-home{display:inline-flex;align-items:center;gap:6px;color:#e8f4f8;text-decoration:none;
+    font-family:-apple-system,"PingFang SC","Microsoft YaHei",system-ui,sans-serif;
+    font-size:14px;font-weight:600;line-height:1;
+    background:rgba(255,255,255,.08);border:1px solid rgba(126,224,255,.38);
+    border-radius:999px;padding:8px 14px;transition:.15s;cursor:pointer}
+  .back-home:hover{background:rgba(126,224,255,.18);border-color:#7ee0ff;color:#fff}
 </style>
 </head>
 <body>
+<nav class="site-bar"><a class="back-home" href="./index.html">← 返回主页</a><span class="site-name">老杨游戏站</span></nav>
 
 <!-- 自检条：脚本一运行就会改写这行字。若它一直显示“尚未执行”，说明浏览器根本没跑脚本 -->
 <div id="boot" style="margin:0;padding:7px 14px;background:#3a2a10;color:#ffd166;font-size:12px;
