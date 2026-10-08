@@ -48,6 +48,11 @@ html,body{width:100%;height:100%;background:#000;overflow:hidden;font-family:"Co
 #topbar{position:absolute;top:0;left:0;right:0;z-index:12;display:flex;justify-content:space-between;padding:0}
 #topbar .tbtn{background:rgba(0,0,0,.45);border:1px solid rgba(255,255,255,.35);color:#fff;
   padding:5px 12px;border-radius:6px;font-size:13px;letter-spacing:1px}
+/* #btnHome 独立覆盖为全站统一胶囊（.tbtn 其余按钮不动） */
+#topbar #btnHome{background:rgba(255,255,255,.08);border-color:rgba(126,224,255,.38);
+  border-radius:999px;
+  font-family:-apple-system,"PingFang SC","Microsoft YaHei",system-ui,sans-serif;transition:.15s}
+#topbar #btnHome:hover{background:rgba(126,224,255,.18);border-color:#7ee0ff;color:#fff}
 /* 右指调节面板 */
 #feelPanel{position:absolute;inset:0;z-index:50;background:rgba(0,0,0,.72);
   display:flex;align-items:center;justify-content:center}
@@ -72,9 +77,12 @@ html,body{width:100%;height:100%;background:#000;overflow:hidden;font-family:"Co
   align-items:center;justify-content:center;gap:26px;color:#fff;cursor:pointer;
   -webkit-user-select:none;user-select:none}
 #boot.gone{display:none}
-#bootHome{position:absolute;top:14px;left:16px;color:#9fb0bb;font-size:13px;text-decoration:none;
-  letter-spacing:1px;cursor:pointer;z-index:46;padding:4px}
-#bootHome:hover{color:#7ee0ff}
+#bootHome{position:absolute;top:14px;left:16px;color:#e8f4f8;font-size:13px;text-decoration:none;
+  letter-spacing:1px;cursor:pointer;z-index:46;
+  font-family:-apple-system,"PingFang SC","Microsoft YaHei",system-ui,sans-serif;font-weight:600;
+  background:rgba(255,255,255,.08);border:1px solid rgba(126,224,255,.38);
+  border-radius:999px;padding:6px 12px;transition:.15s}
+#bootHome:hover{background:rgba(126,224,255,.18);border-color:#7ee0ff;color:#fff}
 #bootTitle{font-size:30px;letter-spacing:8px;font-weight:bold;color:#e53935;
   text-shadow:3px 3px 0 #7f0000,0 0 22px rgba(229,57,53,.6)}
 #bootSub{font-size:13px;opacity:.7;letter-spacing:2px;margin-top:-14px}
