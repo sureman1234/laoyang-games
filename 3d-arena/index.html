@@ -32,7 +32,7 @@
   #hud.on{opacity:1;}
 
   .topbar{
-    position:absolute;top:0;left:0;right:0;
+    position:absolute;top:58px;left:0;right:0;
     display:flex;align-items:flex-start;justify-content:space-between;
     padding:14px 20px;gap:14px;
   }
@@ -216,7 +216,7 @@
 
   /* 战斗中的浮动返回入口（右上暂停键旁） */
   #tHome{
-    position:fixed;right:calc(66px + env(safe-area-inset-right));top:calc(12px + env(safe-area-inset-top));
+    position:fixed;right:calc(66px + env(safe-area-inset-right));top:calc(62px + env(safe-area-inset-top));
     width:46px;height:46px;font-size:18px;border-radius:12px;
     background:rgba(0,0,0,.4);z-index:20;
     text-decoration:none;align-items:center;justify-content:center;
@@ -224,7 +224,7 @@
   }
   #tHome.show{display:flex;}
   #hud .homebtn{
-    position:absolute;right:70px;top:14px;pointer-events:auto;
+    position:absolute;right:70px;top:62px;pointer-events:auto;
     display:inline-flex;align-items:center;gap:6px;
     padding:6px 13px;border-radius:8px;text-decoration:none;
     background:rgba(0,0,0,.42);border:1px solid rgba(255,255,255,.16);
@@ -309,7 +309,7 @@
   #tD{right:calc(212px + env(safe-area-inset-right));bottom:calc(100px + env(safe-area-inset-bottom));} /* 闪 */
   #tJmp{right:calc(212px + env(safe-area-inset-right));bottom:calc(174px + env(safe-area-inset-bottom));} /* 跳 */
   /* 暂停（仅触屏显示，桌面用 P 键） */
-  #tPause{position:fixed;right:calc(12px + env(safe-area-inset-right));top:calc(12px + env(safe-area-inset-top));
+  #tPause{position:fixed;right:calc(12px + env(safe-area-inset-right));top:calc(62px + env(safe-area-inset-top));
     width:46px;height:46px;font-size:18px;border-radius:12px;background:rgba(0,0,0,.4);z-index:20;display:none;}
   body.isTouch #tPause{display:flex;}
   body.isTouch #hud .homebtn{right:70px;}
@@ -351,9 +351,27 @@
   body.isTouch .keys{display:none;}
   body.isTouch .keysTouch{display:block;}
   .side .fsub{max-width:26vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+
+  /* ===== 老杨游戏站 · 统一站点栏 ===== */
+  .site-bar{position:fixed;top:0;left:0;right:0;height:44px;z-index:9999;
+    display:flex;align-items:center;justify-content:space-between;padding:0 14px;
+    box-sizing:border-box;
+    background:linear-gradient(135deg,rgba(10,46,56,.94),rgba(18,64,80,.94));
+    border-bottom:1px solid rgba(126,224,255,.28);
+    backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);
+    font-family:-apple-system,"PingFang SC","Microsoft YaHei",system-ui,sans-serif;}
+  .site-bar .site-name{color:#9fd8ec;font-size:13px;letter-spacing:2px;font-weight:600;white-space:nowrap}
+  .back-home{display:inline-flex;align-items:center;gap:6px;color:#e8f4f8;text-decoration:none;
+    font-family:-apple-system,"PingFang SC","Microsoft YaHei",system-ui,sans-serif;
+    font-size:14px;font-weight:600;line-height:1;
+    background:rgba(255,255,255,.08);border:1px solid rgba(126,224,255,.38);
+    border-radius:999px;padding:8px 14px;transition:.15s;cursor:pointer}
+  .back-home:hover{background:rgba(126,224,255,.18);border-color:#7ee0ff;color:#fff}
 </style>
 </head>
 <body>
+
+<nav class="site-bar"><a class="back-home" href="../index.html">← 返回主页</a><span class="site-name">老杨游戏站</span></nav>
 
 <canvas id="scene"></canvas>
 <div id="flash"></div>
