@@ -43,6 +43,28 @@ html,body{width:100%;height:100%;background:#000;overflow:hidden;font-family:"Co
    四个钮本身看不见了，就靠这颗胶囊的状态一眼看出「是被收起来了」还是「本来就没有」。 */
 #topbar .tbtn.mini{padding:5px 9px;font-size:12px;letter-spacing:0;text-align:center;min-width:50px}
 #topbar .tbtn.off{opacity:.5}
+/* ★ 顶栏自动收起（第三十一轮，老杨要求）：
+   「顶部一排按钮玩家不触碰 3 秒后缩成一个小球放在最左侧，避免影响视觉，
+     后续玩家一点又能展开成一排按钮。」
+   做法：**不动 #topbar 的结构**（8 个胶囊原地待命，`verify-jsdom` 拿真 children 数着呢），
+   只在 #wrap 上切一个 `.tbm`：
+     展开态 = #topbar 正常显示，小球透明且不吃事件；
+     收起态 = #topbar 整排淡出（opacity + pointer-events，**不是 display:none** ——
+              留占位，#syskeys 四钮的 top 是照 topbar.offsetHeight 算的，抽掉会让它们跳）。
+   小球平时 `pointer-events:none`，**只在收起可见时才吃事件** ——
+   否则它会成为左半屏摇杆上一个看不见的"洞"。 */
+#topbar{transition:opacity .2s ease}
+#wrap .tbBall{position:absolute;z-index:12;
+  width:34px;height:34px;border-radius:50%;box-sizing:border-box;
+  display:flex;align-items:center;justify-content:center;
+  font-size:15px;line-height:1;color:#fff;
+  background:rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.4);
+  -webkit-user-select:none;user-select:none;touch-action:none;cursor:pointer;
+  opacity:0;transform:scale(.5);pointer-events:none;
+  transition:opacity .2s ease,transform .2s ease}
+#wrap.tbm #topbar{opacity:0;pointer-events:none}
+#wrap.tbm .tbBall{opacity:.95;transform:scale(1);pointer-events:auto}
+#wrap.tbm .tbBall:active{opacity:1;transform:scale(.9);background:rgba(0,0,0,.75)}
 /* ---------- 右上角功能键（老杨 2026-10-09 第十七轮定稿，第十八轮调排布）----------
    四个按钮铺在右上角，两列两行、**间距拉开**（上一版老杨嫌太集中）：
      上排 = 红（连发）：左 B、右 A
@@ -193,6 +215,12 @@ html,body{width:100%;height:100%;background:#000;overflow:hidden;font-family:"Co
     <div class="tbtn tgl on" id="btnFireB">B·连发</div>
     <div class="tbtn tgl" id="btnFireA">A·单发</div>
   </div>
+
+  <!-- ★ 顶栏收起后的小球（第三十一轮，老杨要求）：钉在最左侧（顶栏原来的左下角位），
+       点一下把整排胶囊叫回来。**它不是 #topbar 的孩子** —— 放外面，
+       `#topbar.children` 仍是那 8 个胶囊，verify-jsdom 的个数断言不用动。
+       收起 / 展开全由 #wrap 上的 `.tbm` 一个 class 驱动（见 CSS 与 tbExpand/tbCollapse）。 -->
+  <div class="tbBall" id="tbBall">☰</div>
 
   <!-- 右上角四个功能键（老杨 2026-10-09 第十七轮定稿 → 第十九轮可拖拽）：
          上排 = 红（**连发**）：左 B、右 A
@@ -1198,6 +1226,7 @@ const rotEl    = document.getElementById('rotate');
 const padLEl   = document.getElementById('padL');
 const padREl   = document.getElementById('padR');
 const topbarEl = document.getElementById('topbar');
+const tbBallEl = document.getElementById('tbBall');   // 顶栏收起后的小球（第三十一轮）
 /* （第十九轮删除：bootEl —— 启动展示页 #boot 已按老杨要求整页去掉，页面加载完直接进游戏。） */
 const hintEl   = document.getElementById('hint');
 const syskeysEl = document.getElementById('syskeys');
@@ -1228,6 +1257,13 @@ function layout(){
   cv.style.left = Math.floor((W - boxW) / 2) + 'px';
   cv.style.top  = Math.floor((H - boxH) / 2) + 'px';
   topbarEl.style.padding = (safePx('top')+6)+'px '+(safePx('right')+10)+'px 0 '+(safePx('left')+10)+'px';
+  /* 顶栏收起后的小球（第三十一轮）：钉在**那一排的左端**——
+     左内边距跟顶栏写同一个数，所以它和第一个胶囊左边缘对齐；上边也对齐。
+     收起态才看得见（CSS 管），位置照样每次布局都刷一遍，转屏 / 安全区都对得上。 */
+  if(tbBallEl){
+    tbBallEl.style.left = (safePx('left')+10)+'px';
+    tbBallEl.style.top  = (safePx('top')+6)+'px';
+  }
   // 右上角四个功能键（老杨 2026-10-09 第十七轮定稿；第十九轮改成**各自绝对定位、暂停可拖**）：
   // 默认仍是两列两行、间距拉开（0.45 倍直径），钉在**画布盒子之内**、躲开顶栏；
   // 只要老杨拖过（FKEY_POS 里记着），就用他拖到的位置 —— placeKey 会把它夹在屏幕内。
@@ -1306,6 +1342,7 @@ function startRun(){
   stickClear(); rightClear(); cornerClearAll();
   lastTs = performance.now(); acc = 0;
   showHint();
+  tbExpand();                        // 顶栏（第三十一轮）：每局开局先亮 3 秒，然后自动缩
 }
 
 /* 开场大字提示卡的显隐（第二十二轮改了语义）：
@@ -1324,6 +1361,34 @@ function showHint(){
   }
 }
 function hideHintSoon(){ if(hintEl) hintEl.classList.add('dim'); }
+
+/* ------------------------- 顶栏自动收起（第三十一轮，老杨要求） -------------------------
+   原话：「让顶部一排按钮可以玩家不触碰 3 秒后缩成一个小球放在最左侧，避免影响视觉，
+   后续玩家一点又能展开成一排按钮。」
+   边界先想清楚三条：
+     ① **只认「碰顶栏」** —— 点任意胶囊 / 点小球都算，屏幕上打游戏不算。
+        若按「屏幕没有触摸」来算，玩家一直在玩就永远不缩，等于白做。
+     ② **暂停（编辑态）不缩** —— 那会儿「▶ 继续」「◱ 隐藏键」正要靠这几颗胶囊，
+        缩成球等于把出口藏了。恢复运行后重新起 3 秒计时。
+     ③ 小球只在**收起可见**时才吃事件（CSS 里 pointer-events 管的），展开态它不吃 ——
+        否则左半屏摇杆上会多一个看不见的"洞"。
+   状态只有一个：`#wrap.tbm`（收起）。#topbar 与小球都靠它切。 */
+const TB_IDLE_MS = 3000;
+let tbTimer = null;
+function tbExpand(noTimer){
+  if(tbTimer){ clearTimeout(tbTimer); tbTimer = null; }
+  if(wrapEl) wrapEl.classList.remove('tbm');
+  if(!noTimer && !paused) tbTimer = setTimeout(tbCollapse, TB_IDLE_MS);
+}
+function tbCollapse(){
+  tbTimer = null;
+  if(paused) return;                       // 边界②：编辑态绝不收
+  if(wrapEl) wrapEl.classList.add('tbm');
+}
+function tbPoke(){                         // 任何一次「碰顶栏」都走这里：叫回来 + 重新计时
+  if(paused) return;
+  tbExpand();
+}
 /* 启动流程：**先把游戏开起来，全屏/横屏随后补**。
    ⚠️ 这里踩过一个坑：原先写成 await goFullscreen() → await lockLandscape() → startRun()，
       结果在部分浏览器上 requestFullscreen 的 Promise **永不 resolve 也不 reject**
@@ -1354,6 +1419,7 @@ function resetNES(){
   started = true; running = true; paused = false;
   document.getElementById('btnPause').textContent = 'Ⅱ 调整键';
   setKeyEdit(false);                 // 重置后不该停在「调位置」态
+  tbExpand();                        // 顶栏（第三十一轮）：重置后先展开，3 秒后再缩
   lastTs = performance.now(); acc = 0;
 }
 function togglePause(){
@@ -1365,6 +1431,9 @@ function togglePause(){
      拖到哪存哪；编辑态底部同时出现一键复位胶囊（第二十六轮起另可选中调大小）。
      继续游戏即退出，拖拽期间不触发按键。 */
   setKeyEdit(paused);
+  /* 顶栏（第三十一轮）：进编辑态**把顶栏叫回来并冻住**（noTimer，暂停中不自动收）；
+     点「▶ 继续」退出后重新起 3 秒计时。 */
+  tbExpand(paused);
   if(paused){ stickClear(); rightClear(); }        // 暂停时把正在按的清掉，免得挂住
   if(!paused){ lastTs = performance.now(); acc = 0; }
 }
@@ -1438,6 +1507,27 @@ function init(){
 
   mark('3/5 按钮');
   bindSysKeys();                                   // 顶栏 START/SELECT 胶囊 + 右上角四个功能圆钮
+  /* ★ 顶栏自动收起（第三十一轮）：碰一下就展开并重新起 3 秒计时；点小球直接展开。
+     监听挂在 #topbar 上用**捕获阶段** —— 里面的胶囊每个都 stopPropagation 了，
+     冒泡冒不上来，但捕获先到容器，照样能感知"有人碰了顶栏"。
+     小球同样挂 pointerdown + touchstart（触摸设备只发 touch 的场合兜一层）。 */
+  if(topbarEl){
+    topbarEl.addEventListener('pointerdown', tbPoke, true);
+    topbarEl.addEventListener('touchstart',  tbPoke, true);
+  }
+  if(tbBallEl){
+    const ballOpen = e => {
+      if(e){
+        if(e.preventDefault) e.preventDefault();
+        if(e.stopPropagation) e.stopPropagation();
+      }
+      hideHintSoon(); initAudio(); tbExpand();
+    };
+    tbBallEl.addEventListener('pointerdown', ballOpen, {passive:false});
+    tbBallEl.addEventListener('touchstart',  ballOpen, {passive:false});
+    tbBallEl.addEventListener('contextmenu', e=>e.preventDefault());
+  }
+  tbExpand();                                      // 开局先展开：亮 3 秒，然后自己缩成小球
   document.getElementById('btnSound').addEventListener('click', e=>{ if(e.stopPropagation) e.stopPropagation(); initAudio(); toggleSound(); });
   document.getElementById('btnPause').addEventListener('click', e=>{ if(e.stopPropagation) e.stopPropagation(); togglePause(); });
   document.getElementById('btnReset').addEventListener('click', e=>{ if(e.stopPropagation) e.stopPropagation(); initAudio(); resetNES(); });
@@ -1591,7 +1681,12 @@ window.__probe = {
   fkeySize: () => FKEY_SIZE,
   baseFn: () => baseFn,
   resetAllKeys: resetAllKeys,
-  stepKeySize: stepKeySize
+  stepKeySize: stepKeySize,
+  /* 第三十一轮新增：顶栏收成小球的状态（自动化验证要读） */
+  tbMin: () => !!(wrapEl && wrapEl.classList && wrapEl.classList.contains('tbm')),
+  tbExpand: tbExpand,
+  tbCollapse: tbCollapse,
+  tbPoke: tbPoke
 };
 
 if(document.readyState==='loading') addEventListener('DOMContentLoaded', init); else init();
