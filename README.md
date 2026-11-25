@@ -13,6 +13,7 @@
 | 鹈鹕骑行 | `pelican-ride.html` | SVG 2D 动画 · 点击切换 |
 | 地块地图 | `map/index.html` | 卫星图叠加 / 图斑标注 |
 | 全息闪卡 | `holo-card/index.html` | 3D 镭射收藏卡 · 交互视差 |
+| 超级玛丽 3 | `mario3-canvas/index.html` | 纯 Canvas 手写 · 四关 · 零外部素材 |
 
 ## 本地预览
 

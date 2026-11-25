@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>超级玛丽 3 · 网页复刻</title>
+<link rel="stylesheet" href="style.css">
+<style>
+  /* ===== 老杨游戏站 · 统一站点栏 ===== */
+  .site-bar{position:fixed;top:0;left:0;right:0;height:44px;z-index:9999;
+    display:flex;align-items:center;justify-content:space-between;padding:0 14px;
+    box-sizing:border-box;
+    background:linear-gradient(135deg,rgba(10,46,56,.94),rgba(18,64,80,.94));
+    border-bottom:1px solid rgba(126,224,255,.28);
+    backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);
+    font-family:-apple-system,"PingFang SC","Microsoft YaHei",system-ui,sans-serif;}
+  .site-bar .site-name{color:#9fd8ec;font-size:13px;letter-spacing:2px;font-weight:600;white-space:nowrap}
+  .back-home{display:inline-flex;align-items:center;gap:6px;color:#e8f4f8;text-decoration:none;
+    font-family:-apple-system,"PingFang SC","Microsoft YaHei",system-ui,sans-serif;
+    font-size:14px;font-weight:600;line-height:1;
+    background:rgba(255,255,255,.08);border:1px solid rgba(126,224,255,.38);
+    border-radius:999px;padding:8px 14px;transition:.15s;cursor:pointer}
+  .back-home:hover{background:rgba(126,224,255,.18);border-color:#7ee0ff;color:#fff}
+  /* 给固定顶栏让出 44px，画布不会被压住 */
+  body{padding-top:44px}
+</style>
+</head>
+<body>
+<nav class="site-bar"><a class="back-home" href="../index.html">← 返回主页</a><span class="site-name">老杨游戏站</span></nav>
+<div id="wrap">
+  <canvas id="c" width="256" height="240"></canvas>
+  <div id="scanlines"></div>
+</div>
+
+<div id="hint">
+  <b>← →</b> 移动 ｜ <b>Z / 空格</b> 跳 ｜ <b>X</b> 跑 / 发火球 / 甩尾 ｜ <b>P</b> 暂停 ｜ <b>R</b> 重开本关
+</div>
+
+<!-- 触屏 -->
+<div id="touch" class="hide">
+  <div class="pad">
+    <button data-k="left" class="dpad l">◀</button>
+    <button data-k="down" class="dpad d">▼</button>
+    <button data-k="right" class="dpad r">▶</button>
+  </div>
+  <div class="btns">
+    <button data-k="run" class="ab b">B</button>
+    <button data-k="jump" class="ab a">A</button>
+  </div>
+</div>
+
+<script src="levels.js"></script>
+<script src="engine.js"></script>
+</body>
+</html>

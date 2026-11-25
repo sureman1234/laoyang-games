@@ -1,0 +1,59 @@
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body {
+  width: 100%; height: 100%; overflow: hidden;
+  background: #06070c;
+  color: #cfd6e6;
+  font-family: -apple-system, "PingFang SC", "Microsoft YaHei", monospace;
+  -webkit-user-select: none; user-select: none;
+  touch-action: none;
+}
+body {
+  display: flex; align-items: center; justify-content: center;
+  background:
+    radial-gradient(1200px 700px at 50% 40%, #141a2b 0%, #06070c 70%);
+}
+
+#wrap { position: relative; line-height: 0; }
+#c {
+  display: block;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+  background: #5c94fc;
+  box-shadow: 0 0 0 3px #1b2130, 0 0 42px 8px rgba(70, 120, 255, .22), 0 18px 60px rgba(0,0,0,.6);
+  border-radius: 3px;
+}
+#scanlines {
+  position: absolute; inset: 0; pointer-events: none;
+  background: repeating-linear-gradient(to bottom, rgba(0,0,0,.16) 0 1px, rgba(0,0,0,0) 1px 3px);
+  mix-blend-mode: multiply; opacity: .55; border-radius: 3px;
+}
+
+#hint {
+  position: fixed; left: 0; right: 0; bottom: 10px;
+  text-align: center; font-size: 12px; color: #7d879c; letter-spacing: .3px;
+}
+#hint b { color: #b9c4da; }
+
+/* 触屏按钮 */
+#touch { position: fixed; inset: 0; pointer-events: none; }
+#touch.hide { display: none; }
+.pad, .btns { position: absolute; bottom: 22px; pointer-events: auto; }
+.pad { left: 18px; width: 168px; height: 96px; }
+.btns { right: 18px; width: 168px; height: 96px; }
+.dpad, .ab {
+  position: absolute; border: none; color: #e8eefc; font-size: 20px; font-weight: 700;
+  background: rgba(120,150,220,.20); border: 1px solid rgba(150,180,255,.35);
+  border-radius: 12px; backdrop-filter: blur(4px);
+}
+.dpad { width: 52px; height: 52px; }
+.dpad.l { left: 0; bottom: 0; }
+.dpad.r { left: 58px; bottom: 0; }
+.dpad.d { left: 29px; bottom: 56px; width: 52px; height: 34px; font-size: 14px; }
+.ab { width: 68px; height: 68px; border-radius: 50%; font-size: 24px; }
+.ab.a { right: 0; bottom: 12px; background: rgba(255,110,110,.24); border-color: rgba(255,150,150,.45); }
+.ab.b { right: 76px; bottom: 0; background: rgba(120,220,160,.18); border-color: rgba(150,255,190,.35); }
+.dpad:active, .ab:active { background: rgba(200,220,255,.45); }
+
+@media (max-width: 760px) {
+  #hint { display: none; }
+}
